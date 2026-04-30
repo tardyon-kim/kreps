@@ -184,11 +184,12 @@ Create `package.json` with these scripts:
     "lint": "pnpm -r lint",
     "test": "pnpm -r test",
     "test:e2e": "pnpm --filter @kreps/web test:e2e",
+    "test:integration": "pnpm -r --if-present test:integration",
     "typecheck": "pnpm -r typecheck",
     "db:generate": "pnpm --filter @kreps/api db:generate",
     "db:migrate": "pnpm --filter @kreps/api db:migrate",
     "db:seed": "pnpm --filter @kreps/api db:seed",
-    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm build",
+    "verify": "pnpm lint && pnpm typecheck && pnpm test && pnpm test:integration && pnpm build",
     "compose:up": "docker compose -f infra/compose.yml up -d",
     "compose:down": "docker compose -f infra/compose.yml down"
   }
@@ -346,6 +347,7 @@ $ErrorActionPreference = "Stop"
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:integration
 pnpm build
 docker compose -f infra/compose.yml config
 node scripts/check-offline-assets.mjs
@@ -359,6 +361,7 @@ set -eu
 pnpm lint
 pnpm typecheck
 pnpm test
+pnpm test:integration
 pnpm build
 docker compose -f infra/compose.yml config
 node scripts/check-offline-assets.mjs
@@ -718,12 +721,17 @@ Run:
 
 ```powershell
 pnpm --filter @kreps/api test -- test-context.test.ts schema.test.ts
+docker compose -f infra/compose.yml up -d postgres
+$env:TEST_DATABASE_URL="postgres://kreps:kreps_dev_password@localhost:5432/kreps"
+pnpm --filter @kreps/api db:migrate
+pnpm --filter @kreps/api db:seed
+pnpm --filter @kreps/api test:integration
 pnpm --filter @kreps/api typecheck
 git add apps/api
 git commit -m "feat: add database schema and seed foundation"
 ```
 
-Expected: test-context test, schema test, and typecheck pass. Database-backed integration tests must use `TEST_DATABASE_URL`; unit tests must not silently substitute an in-memory database.
+Expected: test-context test, schema test, database migration, seed, API integration tests, and typecheck pass. Database-backed integration tests must use `TEST_DATABASE_URL`; unit tests must not silently substitute an in-memory database. Do not proceed to Task 4 until the PostgreSQL-backed migration, seed, and integration-test path has passed at least once.
 
 ## Task 4: API App, Config, Health, And Audit
 
@@ -962,7 +970,8 @@ This task is the Phase 1 gate. Do not start dashboards, saved views, rich projec
 - Create: `apps/web/src/features/work/WorkDetailPanel.tsx`
 - Create: `apps/web/src/features/work/WorkStatusBoard.tsx`
 - Create: `apps/web/src/features/work/work.api.ts`
-- Create: `apps/web/e2e/core-work-loop.spec.ts`
+- Create: `apps/web/e2e/core-work-loop.ko.spec.ts`
+- Create: `apps/web/e2e/core-work-loop.en.spec.ts`
 
 - [ ] **Step 1: Write API workflow tests**
 
@@ -983,21 +992,28 @@ Use the shared workflow transition rules. Store creation, assignment, status cha
 
 `MyWorkPage` shows today, awaiting review, due soon, translation needed, and overdue groups. `AllWorkPage` shows table filters for status, priority, organization, project, assignee, and due date. `WorkDetailPanel` supports status change, assignment, checklist, comments tab, translation status summary, and history tab. Saved views and full translation review UI wait for later tasks.
 
-- [ ] **Step 4: Add Phase 1 Playwright smoke test**
+- [ ] **Step 4: Add Phase 1 Korean and English Playwright smoke tests**
 
-Create `apps/web/e2e/core-work-loop.spec.ts` for:
+Create `apps/web/e2e/core-work-loop.ko.spec.ts` for:
 
 ```text
-login as seeded work manager -> switch language to English -> switch dark theme -> quick create work item -> open My Work -> assign employee -> move to in_progress -> add comment -> move to completion_reported -> verify history contains create, assign, status, comment, status
+login as seeded work manager -> keep language Korean -> switch dark theme -> quick create work item -> open 내 업무 -> assign employee -> move to 진행 중 -> add Korean comment -> move to 완료 보고 -> verify history contains create, assign, status, comment, status
+```
+
+Create `apps/web/e2e/core-work-loop.en.spec.ts` for:
+
+```text
+login as seeded work manager -> switch language to English -> switch dark theme -> quick create work item -> open My Work -> assign employee -> move to in_progress -> add English comment -> move to completion_reported -> verify history contains create, assign, status, comment, status
 ```
 
 Run:
 
 ```powershell
-pnpm --filter @kreps/web test:e2e -- core-work-loop.spec.ts
+pnpm --filter @kreps/web test:e2e -- core-work-loop.ko.spec.ts
+pnpm --filter @kreps/web test:e2e -- core-work-loop.en.spec.ts
 ```
 
-Expected: PASS at desktop viewport. Add mobile viewport coverage before Phase 2 if any sidebar or detail panel text overflows.
+Expected: both Korean and English smoke tests pass at desktop viewport. Add mobile viewport coverage before Phase 2 if any sidebar or detail panel text overflows.
 
 - [ ] **Step 5: Verify and commit**
 
@@ -1006,9 +1022,10 @@ Run:
 ```powershell
 pnpm --filter @kreps/api test -- work.test.ts comment.test.ts
 pnpm --filter @kreps/web test
-pnpm --filter @kreps/web test:e2e -- core-work-loop.spec.ts
+pnpm --filter @kreps/web test:e2e -- core-work-loop.ko.spec.ts
+pnpm --filter @kreps/web test:e2e -- core-work-loop.en.spec.ts
 pnpm verify
-git add apps/api/src/modules/work apps/api/src/modules/comments apps/web/src/features/work apps/web/e2e/core-work-loop.spec.ts
+git add apps/api/src/modules/work apps/api/src/modules/comments apps/web/src/features/work apps/web/e2e/core-work-loop.ko.spec.ts apps/web/e2e/core-work-loop.en.spec.ts
 git commit -m "feat: add work item workflow"
 ```
 
@@ -1285,7 +1302,8 @@ Checklist items:
 
 - login works,
 - Phase 0 health and offline asset checks pass,
-- Phase 1 core work loop Playwright smoke test passes,
+- Phase 1 Korean core work loop Playwright smoke test passes,
+- Phase 1 English core work loop Playwright smoke test passes,
 - Korean and English UI work,
 - light and dark themes work,
 - admin can create organization and users,
@@ -1313,6 +1331,7 @@ Run:
 ```powershell
 pnpm install --frozen-lockfile
 pnpm verify
+pnpm --filter @kreps/api test:integration
 pnpm --filter @kreps/web test:e2e
 docker compose -f infra/compose.yml config
 node scripts/check-offline-assets.mjs apps/web/dist
