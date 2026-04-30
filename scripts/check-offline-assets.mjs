@@ -7,8 +7,11 @@ const forbidden = [
   /(^|["'(=\s])\/\/(?!\/)[^"')\s]+/gi,
 ];
 const allowedReferences = new Set([
+  "https://react.dev/errors/",
   "http://www.w3.org/2000/svg",
   "http://www.w3.org/1999/xlink",
+  "http://www.w3.org/1998/Math/MathML",
+  "http://www.w3.org/XML/1998/namespace",
 ]);
 
 function walk(dir) {
