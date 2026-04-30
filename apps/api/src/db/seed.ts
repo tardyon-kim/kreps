@@ -26,6 +26,71 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
   try {
     await client.begin(async (sql) => {
       await sql`
+        WITH ranked_admin_global_roles AS (
+          SELECT
+            id,
+            row_number() OVER (
+              ORDER BY (organization_id IS NULL AND project_id IS NULL) DESC, created_at ASC, id ASC
+            ) AS position
+          FROM user_roles
+          WHERE user_id = ${rbacFixtures.adminUserId}
+            AND role_id = 'system_admin'
+            AND scope = 'global'
+        )
+        DELETE FROM user_roles
+        WHERE id IN (
+          SELECT id FROM ranked_admin_global_roles WHERE position > 1
+        )
+      `;
+
+      await sql`
+        UPDATE user_roles
+        SET organization_id = NULL, project_id = NULL
+        WHERE user_id = ${rbacFixtures.adminUserId}
+          AND role_id = 'system_admin'
+          AND scope = 'global'
+      `;
+
+      await sql`
+        DELETE FROM work_item_history
+        WHERE id <> ${seedIds.koreanWorkItemCreatedHistoryId}
+          AND work_item_id = ${rbacFixtures.workItemId}
+          AND actor_id = ${rbacFixtures.adminUserId}
+          AND action = 'created'
+          AND after = '{"status":"registered"}'::jsonb
+      `;
+
+      await sql`
+        DELETE FROM work_item_history
+        WHERE id <> ${seedIds.englishWorkItemCreatedHistoryId}
+          AND work_item_id = ${seedIds.englishWorkItemId}
+          AND actor_id = ${rbacFixtures.managerUserId}
+          AND action = 'created'
+          AND after = '{"status":"assigned"}'::jsonb
+      `;
+
+      await sql`
+        DELETE FROM glossary_terms
+        WHERE id <> ${seedIds.workOsGlossaryTermId}
+          AND scope = 'global'
+          AND english_expression = 'Work OS'
+      `;
+
+      await sql`
+        DELETE FROM glossary_terms
+        WHERE id <> ${seedIds.workItemGlossaryTermId}
+          AND scope = 'global'
+          AND english_expression = 'Work Item'
+      `;
+
+      await sql`
+        DELETE FROM glossary_terms
+        WHERE id <> ${seedIds.agentRunnerGlossaryTermId}
+          AND scope = 'global'
+          AND english_expression = 'Agent Runner'
+      `;
+
+      await sql`
         INSERT INTO organizations (id, name, code, default_locale)
         VALUES (${rbacFixtures.rootOrganizationId}, '본사', 'HQ', 'ko')
         ON CONFLICT (id) DO UPDATE SET

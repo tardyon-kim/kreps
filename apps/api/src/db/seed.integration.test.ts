@@ -2,19 +2,25 @@ import { permissions, roles } from "@kreps/shared";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createDatabaseClient, type DatabaseClient } from "./client.js";
+import { migrate } from "./migrate.js";
 import { seed } from "./seed.js";
-import { getRequiredTestDatabaseUrl } from "../test/test-context.js";
+import { createDisposableTestDatabase, type DisposableTestDatabase } from "../test/test-context.js";
 import { rbacFixtures } from "../test/rbac-fixtures.js";
 
 describe("seeded PostgreSQL database", () => {
+  let disposableDatabase: DisposableTestDatabase;
   let database: DatabaseClient;
 
-  beforeAll(() => {
-    database = createDatabaseClient(getRequiredTestDatabaseUrl());
+  beforeAll(async () => {
+    disposableDatabase = await createDisposableTestDatabase("seed");
+    await migrate(disposableDatabase.databaseUrl);
+    await seed(disposableDatabase.databaseUrl);
+    database = createDatabaseClient(disposableDatabase.databaseUrl);
   });
 
   afterAll(async () => {
     await database?.close();
+    await disposableDatabase?.cleanup();
   });
 
   async function readSummary() {
@@ -61,7 +67,7 @@ describe("seeded PostgreSQL database", () => {
   });
 
   it("keeps seed data idempotent when seed runs more than once", async () => {
-    await seed(getRequiredTestDatabaseUrl());
+    await seed(disposableDatabase.databaseUrl);
 
     expect(await readSummary()).toMatchObject({
       work_items_count: 2,
@@ -76,7 +82,7 @@ describe("seeded PostgreSQL database", () => {
     `;
     expect(beforeRow).toBeDefined();
 
-    await seed(getRequiredTestDatabaseUrl(), { INITIAL_ADMIN_PASSWORD: "RotatedSeed123!" });
+    await seed(disposableDatabase.databaseUrl, { INITIAL_ADMIN_PASSWORD: "RotatedSeed123!" });
 
     const [afterRow] = await database.client<{
       after_hash: string;

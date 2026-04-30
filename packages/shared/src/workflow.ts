@@ -14,6 +14,10 @@ export const workStatuses = [
 
 export type WorkStatus = (typeof workStatuses)[number];
 
+export const workPriorities = ["low", "normal", "high", "urgent"] as const;
+
+export type WorkPriority = (typeof workPriorities)[number];
+
 export type WorkStatusGroup = "waiting" | "active" | "review" | "done" | "blocked";
 
 export const workStatusGroups: Record<WorkStatusGroup, readonly WorkStatus[]> = {
@@ -52,4 +56,8 @@ export function getWorkStatusGroup(status: WorkStatus): WorkStatusGroup {
 
 export function isWorkStatus(status: string | undefined): status is WorkStatus {
   return typeof status === "string" && (workStatuses as readonly string[]).includes(status);
+}
+
+export function isWorkPriority(priority: string | undefined): priority is WorkPriority {
+  return typeof priority === "string" && (workPriorities as readonly string[]).includes(priority);
 }

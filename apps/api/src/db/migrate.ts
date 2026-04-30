@@ -64,9 +64,9 @@ export const migrationStatements = [
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT user_roles_unique_scope_target UNIQUE NULLS NOT DISTINCT (user_id, role_id, scope, organization_id, project_id)
   )`,
-  `ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS id uuid`,
-  `UPDATE user_roles SET id = gen_random_uuid() WHERE id IS NULL`,
+  `ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid()`,
   `ALTER TABLE user_roles ALTER COLUMN id SET DEFAULT gen_random_uuid()`,
+  `UPDATE user_roles SET id = gen_random_uuid() WHERE id IS NULL`,
   `ALTER TABLE user_roles ALTER COLUMN id SET NOT NULL`,
   `DO $$
   DECLARE
@@ -251,8 +251,40 @@ export const migrationStatements = [
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS organizations_code_idx ON organizations(code)`,
-  `CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email)`,
+  `DO $$
+  BEGIN
+    IF to_regclass('public.organizations_code_idx') IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_row
+        JOIN pg_attribute attribute
+          ON attribute.attrelid = constraint_row.conrelid
+         AND attribute.attnum = constraint_row.conkey[1]
+        WHERE constraint_row.conrelid = 'organizations'::regclass
+          AND constraint_row.contype = 'u'
+          AND array_length(constraint_row.conkey, 1) = 1
+          AND attribute.attname = 'code'
+      ) THEN
+      CREATE UNIQUE INDEX organizations_code_idx ON organizations(code);
+    END IF;
+  END $$`,
+  `DO $$
+  BEGIN
+    IF to_regclass('public.users_email_idx') IS NULL
+      AND NOT EXISTS (
+        SELECT 1
+        FROM pg_constraint constraint_row
+        JOIN pg_attribute attribute
+          ON attribute.attrelid = constraint_row.conrelid
+         AND attribute.attnum = constraint_row.conkey[1]
+        WHERE constraint_row.conrelid = 'users'::regclass
+          AND constraint_row.contype = 'u'
+          AND array_length(constraint_row.conkey, 1) = 1
+          AND attribute.attname = 'email'
+      ) THEN
+      CREATE UNIQUE INDEX users_email_idx ON users(email);
+    END IF;
+  END $$`,
   `CREATE INDEX IF NOT EXISTS work_items_status_idx ON work_items(status)`,
   `CREATE INDEX IF NOT EXISTS work_items_project_idx ON work_items(project_id)`,
   `CREATE INDEX IF NOT EXISTS notifications_user_unread_idx ON notifications(user_id, read_at)`,

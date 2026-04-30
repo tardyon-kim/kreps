@@ -3,6 +3,7 @@ import {
   canTransitionWorkStatus,
   getWorkStatusGroup,
   isWorkStatus,
+  workPriorities,
   workStatusGroups,
   workStatuses,
   workStatusTransitions,
@@ -45,5 +46,9 @@ describe("work item workflow", () => {
   it("validates work status strings from API input", () => {
     expect(isWorkStatus("assigned")).toBe(true);
     expect(isWorkStatus("done")).toBe(false);
+  });
+
+  it("exports canonical work priorities for API and web filters", () => {
+    expect(workPriorities).toEqual(["low", "normal", "high", "urgent"]);
   });
 });

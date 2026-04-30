@@ -1,30 +1,181 @@
-import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import postgres from "postgres";
 import { migrate } from "./migrate.js";
-import { getRequiredTestDatabaseUrl } from "../test/test-context.js";
+import { seed } from "./seed.js";
+import { createDisposableTestDatabase, type DisposableTestDatabase } from "../test/test-context.js";
 import { rbacFixtures } from "../test/rbac-fixtures.js";
 
-function databaseUrlWithName(databaseUrl: string, databaseName: string) {
-  const url = new URL(databaseUrl);
-  url.pathname = `/${databaseName}`;
-  return url.toString();
+const legacyEnglishWorkItemId = "00000000-0000-4000-8000-000000000302";
+
+async function createLegacyTask3SeededDatabase(sql: postgres.Sql) {
+  await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+  await sql`
+    CREATE TABLE organizations (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      parent_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
+      name text NOT NULL,
+      code text NOT NULL UNIQUE,
+      default_locale text NOT NULL DEFAULT 'ko',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE users (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      email text NOT NULL UNIQUE,
+      display_name text NOT NULL,
+      password_hash text NOT NULL,
+      locale text NOT NULL DEFAULT 'ko',
+      theme text NOT NULL DEFAULT 'system',
+      status text NOT NULL DEFAULT 'active',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE roles (
+      id text PRIMARY KEY,
+      name text NOT NULL,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE projects (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      manager_id uuid REFERENCES users(id),
+      name text NOT NULL,
+      code text NOT NULL,
+      description text,
+      status text NOT NULL DEFAULT 'planned',
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE user_roles (
+      user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      role_id text NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
+      scope text NOT NULL,
+      organization_id uuid REFERENCES organizations(id),
+      project_id uuid REFERENCES projects(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (user_id, role_id, scope)
+    )
+  `;
+  await sql`
+    CREATE TABLE work_items (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      organization_id uuid NOT NULL REFERENCES organizations(id),
+      project_id uuid REFERENCES projects(id),
+      requester_id uuid NOT NULL REFERENCES users(id),
+      responsible_user_id uuid REFERENCES users(id),
+      title text NOT NULL,
+      description text,
+      source_language text NOT NULL DEFAULT 'ko',
+      status text NOT NULL DEFAULT 'registered',
+      priority text NOT NULL DEFAULT 'normal',
+      due_date timestamptz,
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE work_item_history (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      work_item_id uuid NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+      actor_id uuid REFERENCES users(id),
+      action text NOT NULL,
+      before jsonb NOT NULL DEFAULT '{}'::jsonb,
+      after jsonb NOT NULL DEFAULT '{}'::jsonb,
+      reason text,
+      created_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+  await sql`
+    CREATE TABLE glossary_terms (
+      id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+      source_term text NOT NULL,
+      korean_expression text NOT NULL,
+      english_expression text NOT NULL,
+      description text,
+      usage_example text,
+      scope text NOT NULL DEFAULT 'global',
+      scope_ref_id uuid,
+      last_editor_id uuid REFERENCES users(id),
+      created_at timestamptz NOT NULL DEFAULT now(),
+      updated_at timestamptz NOT NULL DEFAULT now()
+    )
+  `;
+
+  await sql`
+    INSERT INTO organizations (id, parent_id, name, code, default_locale)
+    VALUES
+      (${rbacFixtures.rootOrganizationId}, ${null}, 'Headquarters', 'HQ', 'ko'),
+      (${rbacFixtures.childOrganizationId}, ${rbacFixtures.rootOrganizationId}, 'Product Team', 'PRODUCT', 'ko')
+  `;
+  await sql`
+    INSERT INTO users (id, organization_id, email, display_name, password_hash, locale, theme, status)
+    VALUES
+      (${rbacFixtures.adminUserId}, ${rbacFixtures.rootOrganizationId}, 'admin@example.local', 'System Admin', 'legacy-hash', 'ko', 'system', 'active'),
+      (${rbacFixtures.managerUserId}, ${rbacFixtures.childOrganizationId}, 'manager@example.local', 'Work Manager', 'legacy-hash', 'ko', 'system', 'active'),
+      (${rbacFixtures.employeeUserId}, ${rbacFixtures.childOrganizationId}, 'employee@example.local', 'Employee', 'legacy-hash', 'en', 'system', 'active'),
+      (${rbacFixtures.unrelatedUserId}, ${rbacFixtures.rootOrganizationId}, 'viewer@example.local', 'Viewer', 'legacy-hash', 'en', 'system', 'active')
+  `;
+  await sql`
+    INSERT INTO roles (id, name)
+    VALUES
+      ('system_admin', 'system_admin'),
+      ('work_manager', 'work_manager'),
+      ('employee', 'employee'),
+      ('viewer', 'viewer')
+  `;
+  await sql`
+    INSERT INTO projects (id, organization_id, manager_id, name, code, description, status)
+    VALUES (${rbacFixtures.projectId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.managerUserId}, 'Work OS rollout', 'WORKOS', 'Legacy seed project', 'active')
+  `;
+  await sql`
+    INSERT INTO user_roles (user_id, role_id, scope, organization_id)
+    VALUES
+      (${rbacFixtures.adminUserId}, 'system_admin', 'global', ${rbacFixtures.rootOrganizationId}),
+      (${rbacFixtures.managerUserId}, 'work_manager', 'organization_tree', ${rbacFixtures.childOrganizationId}),
+      (${rbacFixtures.employeeUserId}, 'employee', 'own_related', ${rbacFixtures.childOrganizationId}),
+      (${rbacFixtures.unrelatedUserId}, 'viewer', 'organization_tree', ${rbacFixtures.rootOrganizationId})
+  `;
+  await sql`
+    INSERT INTO work_items (id, organization_id, project_id, requester_id, responsible_user_id, title, description, source_language, status, priority)
+    VALUES
+      (${rbacFixtures.workItemId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.projectId}, ${rbacFixtures.adminUserId}, ${rbacFixtures.managerUserId}, 'Legacy Korean work item', 'Legacy seed description', 'ko', 'registered', 'high'),
+      (${legacyEnglishWorkItemId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.projectId}, ${rbacFixtures.managerUserId}, ${rbacFixtures.managerUserId}, 'Prepare English onboarding flow', 'Legacy seed description', 'en', 'assigned', 'normal')
+  `;
+  await sql`
+    INSERT INTO work_item_history (work_item_id, actor_id, action, after)
+    VALUES
+      (${rbacFixtures.workItemId}, ${rbacFixtures.adminUserId}, 'created', '{"status":"registered"}'::jsonb),
+      (${legacyEnglishWorkItemId}, ${rbacFixtures.managerUserId}, 'created', '{"status":"assigned"}'::jsonb)
+  `;
+  await sql`
+    INSERT INTO glossary_terms (source_term, korean_expression, english_expression, description, usage_example, scope, last_editor_id)
+    VALUES
+      ('Work OS', 'Work OS', 'Work OS', 'Legacy term', 'Legacy example', 'global', ${rbacFixtures.adminUserId}),
+      ('Work Item', 'Work Item', 'Work Item', 'Legacy term', 'Legacy example', 'global', ${rbacFixtures.adminUserId}),
+      ('Agent Runner', 'Agent Runner', 'Agent Runner', 'Legacy term', 'Legacy example', 'global', ${rbacFixtures.adminUserId})
+  `;
 }
 
 describe("database migration compatibility", () => {
-  const baseDatabaseUrl = getRequiredTestDatabaseUrl();
-  const databaseName = `kreps_retrofit_${process.pid}_${Date.now()}`.toLowerCase();
-  const retrofitDatabaseUrl = databaseUrlWithName(baseDatabaseUrl, databaseName);
-  let maintenanceClient: postgres.Sql;
+  let disposableDatabase: DisposableTestDatabase;
+  let retrofitDatabaseUrl: string;
 
   beforeAll(async () => {
-    maintenanceClient = postgres(databaseUrlWithName(baseDatabaseUrl, "postgres"), { max: 1 });
-    await maintenanceClient.unsafe(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
-    await maintenanceClient.unsafe(`CREATE DATABASE ${databaseName}`);
+    disposableDatabase = await createDisposableTestDatabase("retrofit");
+    retrofitDatabaseUrl = disposableDatabase.databaseUrl;
   });
 
   afterAll(async () => {
-    await maintenanceClient.unsafe(`DROP DATABASE IF EXISTS ${databaseName} WITH (FORCE)`);
-    await maintenanceClient.end();
+    await disposableDatabase?.cleanup();
   });
 
   it("retrofits an older Task 3 user_roles primary key into scoped target uniqueness", async () => {
@@ -94,7 +245,7 @@ describe("database migration compatibility", () => {
 
       await sql`
         INSERT INTO organizations (id, name, code)
-        VALUES (${rbacFixtures.childOrganizationId}, '제품팀', 'PRODUCT')
+        VALUES (${rbacFixtures.childOrganizationId}, 'Product Team', 'PRODUCT')
       `;
       await sql`
         INSERT INTO users (id, organization_id, email, display_name, password_hash)
@@ -121,6 +272,49 @@ describe("database migration compatibility", () => {
       `).rejects.toThrow();
     } finally {
       await sql.end();
+    }
+  });
+
+  it("normalizes an older Task 3 seeded database after migration and reseeding", async () => {
+    const legacyDatabase = await createDisposableTestDatabase("legacy_seed");
+    const sql = postgres(legacyDatabase.databaseUrl, { max: 1 });
+
+    try {
+      await createLegacyTask3SeededDatabase(sql);
+      await migrate(legacyDatabase.databaseUrl);
+      await seed(legacyDatabase.databaseUrl);
+
+      const [summary] = await sql<{
+        admin_global_roles_count: number;
+        admin_global_targetless_count: number;
+        user_roles_without_ids_count: number;
+        seeded_history_count: number;
+        seeded_glossary_count: number;
+        organization_code_unique_indexes_count: number;
+        users_email_unique_indexes_count: number;
+      }[]>`
+        SELECT
+          (SELECT count(*)::int FROM user_roles WHERE user_id = ${rbacFixtures.adminUserId} AND role_id = 'system_admin' AND scope = 'global') AS admin_global_roles_count,
+          (SELECT count(*)::int FROM user_roles WHERE user_id = ${rbacFixtures.adminUserId} AND role_id = 'system_admin' AND scope = 'global' AND organization_id IS NULL AND project_id IS NULL) AS admin_global_targetless_count,
+          (SELECT count(*)::int FROM user_roles WHERE id IS NULL) AS user_roles_without_ids_count,
+          (SELECT count(*)::int FROM work_item_history WHERE action = 'created' AND work_item_id IN (${rbacFixtures.workItemId}, ${legacyEnglishWorkItemId})) AS seeded_history_count,
+          (SELECT count(*)::int FROM glossary_terms WHERE scope = 'global' AND english_expression IN ('Work OS', 'Work Item', 'Agent Runner')) AS seeded_glossary_count,
+          (SELECT count(*)::int FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'organizations' AND indexdef LIKE 'CREATE UNIQUE INDEX%' AND indexdef LIKE '%(code)%') AS organization_code_unique_indexes_count,
+          (SELECT count(*)::int FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' AND indexdef LIKE 'CREATE UNIQUE INDEX%' AND indexdef LIKE '%(email)%') AS users_email_unique_indexes_count
+      `;
+
+      expect(summary).toEqual({
+        admin_global_roles_count: 1,
+        admin_global_targetless_count: 1,
+        user_roles_without_ids_count: 0,
+        seeded_history_count: 2,
+        seeded_glossary_count: 3,
+        organization_code_unique_indexes_count: 1,
+        users_email_unique_indexes_count: 1,
+      });
+    } finally {
+      await sql.end();
+      await legacyDatabase.cleanup();
     }
   });
 });

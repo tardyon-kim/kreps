@@ -5,6 +5,7 @@ import {
   scopes as sharedScopes,
   supportedLocales,
   supportedThemes,
+  workPriorities,
   workStatuses,
 } from "@kreps/shared";
 import { sql } from "drizzle-orm";
@@ -23,7 +24,6 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 
-export const workPriorities = ["low", "normal", "high", "urgent"] as const;
 export const userStatuses = ["active", "disabled"] as const;
 export const projectStatuses = ["planned", "active", "on_hold", "completed", "cancelled"] as const;
 export const translationStatuses = ["none", "machine_translated", "review_required", "reviewed", "stale"] as const;
