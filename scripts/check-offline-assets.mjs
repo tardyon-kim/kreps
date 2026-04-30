@@ -4,8 +4,7 @@ import { join } from "node:path";
 const distDir = process.argv[2] ?? "apps/web/dist";
 const forbidden = [
   /https?:\/\/[^"')\s]+/gi,
-  /\/\/fonts\.(googleapis|gstatic)\.com/gi,
-  /cdn\.[^"')\s]+/gi,
+  /(^|["'(=\s])\/\/(?!\/)[^"')\s]+/gi,
 ];
 
 function walk(dir) {
@@ -22,7 +21,7 @@ if (!existsSync(distDir)) {
 
 const offenders = [];
 for (const file of walk(distDir)) {
-  if (!/\.(html|js|css|json)$/.test(file)) continue;
+  if (!/\.(html|js|css|json|svg|webmanifest|xml)$/.test(file)) continue;
   const content = readFileSync(file, "utf8");
   for (const pattern of forbidden) {
     const matches = content.match(pattern);
