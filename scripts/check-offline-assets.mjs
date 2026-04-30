@@ -1,0 +1,39 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const distDir = process.argv[2] ?? "apps/web/dist";
+const forbidden = [
+  /https?:\/\/[^"')\s]+/gi,
+  /\/\/fonts\.(googleapis|gstatic)\.com/gi,
+  /cdn\.[^"')\s]+/gi,
+];
+
+function walk(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? walk(path) : [path];
+  });
+}
+
+if (!existsSync(distDir)) {
+  console.log(`offline asset scan skipped: ${distDir} does not exist yet`);
+  process.exit(0);
+}
+
+const offenders = [];
+for (const file of walk(distDir)) {
+  if (!/\.(html|js|css|json)$/.test(file)) continue;
+  const content = readFileSync(file, "utf8");
+  for (const pattern of forbidden) {
+    const matches = content.match(pattern);
+    if (matches) offenders.push(`${file}: ${matches.join(", ")}`);
+  }
+}
+
+if (offenders.length > 0) {
+  console.error("External runtime asset references found:");
+  console.error(offenders.join("\n"));
+  process.exit(1);
+}
+
+console.log("offline asset scan passed");
