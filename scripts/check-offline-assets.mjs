@@ -6,6 +6,10 @@ const forbidden = [
   /https?:\/\/[^"')\s]+/gi,
   /(^|["'(=\s])\/\/(?!\/)[^"')\s]+/gi,
 ];
+const allowedReferences = new Set([
+  "http://www.w3.org/2000/svg",
+  "http://www.w3.org/1999/xlink",
+]);
 
 function walk(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -25,7 +29,11 @@ for (const file of walk(distDir)) {
   const content = readFileSync(file, "utf8");
   for (const pattern of forbidden) {
     const matches = content.match(pattern);
-    if (matches) offenders.push(`${file}: ${matches.join(", ")}`);
+    const externalMatches = (matches ?? []).filter((match) => {
+      const normalized = match.replace(/^[\s"'(=]+/, "");
+      return !allowedReferences.has(normalized);
+    });
+    if (externalMatches.length > 0) offenders.push(`${file}: ${externalMatches.join(", ")}`);
   }
 }
 
