@@ -54,6 +54,8 @@ export const migrationStatements = [
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS starts_at timestamptz`,
+  `ALTER TABLE projects ADD COLUMN IF NOT EXISTS ends_at timestamptz`,
   `CREATE TABLE IF NOT EXISTS user_roles (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -64,14 +66,17 @@ export const migrationStatements = [
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT user_roles_unique_scope_target UNIQUE NULLS NOT DISTINCT (user_id, role_id, scope, organization_id, project_id)
   )`,
-  `ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid()`,
-  `ALTER TABLE user_roles ALTER COLUMN id SET DEFAULT gen_random_uuid()`,
-  `UPDATE user_roles SET id = gen_random_uuid() WHERE id IS NULL`,
-  `ALTER TABLE user_roles ALTER COLUMN id SET NOT NULL`,
   `DO $$
   DECLARE
     current_pkey_columns text[];
   BEGIN
+    LOCK TABLE user_roles IN ACCESS EXCLUSIVE MODE;
+
+    ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS id uuid DEFAULT gen_random_uuid();
+    ALTER TABLE user_roles ALTER COLUMN id SET DEFAULT gen_random_uuid();
+    UPDATE user_roles SET id = gen_random_uuid() WHERE id IS NULL;
+    ALTER TABLE user_roles ALTER COLUMN id SET NOT NULL;
+
     SELECT array_agg(attribute.attname ORDER BY key_column.ordinality)
     INTO current_pkey_columns
     FROM pg_constraint constraint_row
@@ -89,9 +94,7 @@ export const migrationStatements = [
 
       ALTER TABLE user_roles ADD CONSTRAINT user_roles_pkey PRIMARY KEY (id);
     END IF;
-  END $$`,
-  `DO $$
-  BEGIN
+
     IF NOT EXISTS (
       SELECT 1
       FROM pg_constraint
