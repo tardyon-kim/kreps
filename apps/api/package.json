@@ -1,0 +1,35 @@
+{
+  "name": "@kreps/api",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "pnpm --filter @kreps/shared build && tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "pnpm --filter @kreps/shared build && vitest run",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed": "pnpm --filter @kreps/shared build && tsx src/db/seed.ts",
+    "test:integration": "pnpm --filter @kreps/shared build && vitest run --config vitest.integration.config.ts"
+  },
+  "dependencies": {
+    "@fastify/cookie": "^11.0.2",
+    "@fastify/multipart": "^9.3.0",
+    "@fastify/static": "^8.3.0",
+    "@kreps/shared": "workspace:*",
+    "drizzle-orm": "^0.45.1",
+    "fastify": "^5.6.2",
+    "nanoid": "^5.1.6",
+    "postgres": "^3.4.7",
+    "zod": "^4.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.10.2",
+    "drizzle-kit": "^0.31.8",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^3.2.4"
+  }
+}
