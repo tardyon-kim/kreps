@@ -722,7 +722,9 @@ Run:
 ```powershell
 pnpm --filter @kreps/api test -- test-context.test.ts schema.test.ts
 docker compose -f infra/compose.yml up -d postgres
-$env:TEST_DATABASE_URL="postgres://kreps:kreps_dev_password@localhost:5432/kreps"
+docker compose exec -T postgres psql -U kreps -d postgres -c "DROP DATABASE IF EXISTS kreps_test WITH (FORCE);"
+docker compose exec -T postgres psql -U kreps -d postgres -c "CREATE DATABASE kreps_test;"
+$env:TEST_DATABASE_URL="postgres://kreps:kreps_dev_password@localhost:5432/kreps_test"
 pnpm --filter @kreps/api db:migrate
 pnpm --filter @kreps/api db:seed
 pnpm --filter @kreps/api test:integration
@@ -731,7 +733,7 @@ git add apps/api
 git commit -m "feat: add database schema and seed foundation"
 ```
 
-Expected: test-context test, schema test, database migration, seed, API integration tests, and typecheck pass. Database-backed integration tests must use `TEST_DATABASE_URL`; unit tests must not silently substitute an in-memory database. Do not proceed to Task 4 until the PostgreSQL-backed migration, seed, and integration-test path has passed at least once.
+Expected: test-context test, schema test, disposable test database reset, database migration, seed, API integration tests, and typecheck pass. Database-backed integration tests must use `TEST_DATABASE_URL` pointing at the disposable `kreps_test` database; unit tests must not silently substitute an in-memory database or use the development database. Do not proceed to Task 4 until the PostgreSQL-backed migration, seed, and integration-test path has passed at least once.
 
 ## Task 4: API App, Config, Health, And Audit
 
