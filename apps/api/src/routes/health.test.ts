@@ -25,13 +25,22 @@ function healthTestEnv(overrides: Record<string, string | undefined> = {}) {
 
 describe("GET /health", () => {
   it("keeps API JSON routes under /api", async () => {
-    const app = buildApp(loadConfig(healthTestEnv()));
+    const config = loadConfig(healthTestEnv());
+    const app = buildApp(config);
 
     try {
-      const response = await app.inject({ method: "GET", url: "/api" });
+      const response = await app.inject({
+        method: "GET",
+        url: "/api",
+        headers: {
+          origin: config.appOrigin,
+        },
+      });
 
       expect(response.statusCode).toBe(200);
       expect(response.json()).toMatchObject({ status: "ok" });
+      expect(response.headers["access-control-allow-origin"]).toBe(config.appOrigin);
+      expect(response.headers["access-control-allow-credentials"]).toBe("true");
     } finally {
       await app.close();
     }

@@ -62,6 +62,32 @@ describe("loadConfig", () => {
     ).toThrow(/SESSION_SECRET/);
   });
 
+  it("requires https origins in production", () => {
+    expect(() =>
+      loadConfig(
+        configTestEnv({
+          NODE_ENV: "production",
+          APP_ORIGIN: "http://app.company.local",
+          API_ORIGIN: "https://api.company.local",
+        }),
+      ),
+    ).toThrow(/APP_ORIGIN and API_ORIGIN/);
+  });
+
+  it("normalizes origin strings for browser Origin header matching", () => {
+    expect(
+      loadConfig(
+        configTestEnv({
+          APP_ORIGIN: "https://app.company.local/",
+          API_ORIGIN: "https://api.company.local/",
+        }),
+      ),
+    ).toMatchObject({
+      appOrigin: "https://app.company.local",
+      apiOrigin: "https://api.company.local",
+    });
+  });
+
   it("rejects Agent Runner URLs outside the internal trust boundary", () => {
     expect(() =>
       loadConfig(

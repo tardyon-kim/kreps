@@ -85,6 +85,10 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
     throw new Error("SESSION_SECRET must not use a documented placeholder in production");
   }
 
+  if (data.NODE_ENV === "production" && (!isHttpsOrigin(data.APP_ORIGIN) || !isHttpsOrigin(data.API_ORIGIN))) {
+    throw new Error("APP_ORIGIN and API_ORIGIN must use https in production");
+  }
+
   if (data.AGENT_RUNNER_ENABLED && data.AGENT_RUNNER_URL === null) {
     throw new Error("AGENT_RUNNER_URL is required when AGENT_RUNNER_ENABLED=true");
   }
@@ -95,8 +99,8 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
 
   return {
     nodeEnv: data.NODE_ENV,
-    appOrigin: data.APP_ORIGIN,
-    apiOrigin: data.API_ORIGIN,
+    appOrigin: normalizeOrigin(data.APP_ORIGIN),
+    apiOrigin: normalizeOrigin(data.API_ORIGIN),
     bindHost: data.BIND_HOST,
     bindPort: data.BIND_PORT,
     databaseUrl: data.DATABASE_URL,
@@ -112,6 +116,14 @@ export function loadConfig(env: Record<string, string | undefined> = process.env
       timeoutMs: data.AGENT_RUNNER_TIMEOUT_MS,
     },
   };
+}
+
+function isHttpsOrigin(value: string) {
+  return new URL(value).protocol === "https:";
+}
+
+function normalizeOrigin(value: string) {
+  return new URL(value).origin;
 }
 
 function validateAgentRunnerUrl(rawUrl: string) {
