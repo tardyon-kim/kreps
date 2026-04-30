@@ -5,7 +5,6 @@ export default defineConfig({
     include: ["src/**/*.integration.test.ts"],
     pool: "threads",
     isolate: true,
-    passWithNoTests: true,
     testTimeout: 30000,
   },
 });

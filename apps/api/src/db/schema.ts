@@ -9,13 +9,16 @@ import {
 } from "@kreps/shared";
 import { sql } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   boolean,
+  index,
   integer,
   jsonb,
   pgTable,
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
@@ -33,7 +36,7 @@ export const organizations = pgTable(
   "organizations",
   {
     id: uuid("id").primaryKey().defaultRandom(),
-    parentId: uuid("parent_id"),
+    parentId: uuid("parent_id").references((): AnyPgColumn => organizations.id, { onDelete: "set null" }),
     name: text("name").notNull(),
     code: text("code").notNull(),
     defaultLocale: text("default_locale", { enum: supportedLocales }).notNull().default("ko"),
@@ -107,6 +110,7 @@ export const projects = pgTable("projects", {
 export const userRoles = pgTable(
   "user_roles",
   {
+    id: uuid("id").primaryKey().defaultRandom(),
     userId: uuid("user_id")
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
@@ -118,7 +122,11 @@ export const userRoles = pgTable(
     projectId: uuid("project_id").references(() => projects.id),
     createdAt,
   },
-  (table) => [primaryKey({ columns: [table.userId, table.roleId, table.scope] })],
+  (table) => [
+    unique("user_roles_unique_scope_target")
+      .on(table.userId, table.roleId, table.scope, table.organizationId, table.projectId)
+      .nullsNotDistinct(),
+  ],
 );
 
 export const projectMembers = pgTable(
@@ -166,7 +174,10 @@ export const workItems = pgTable("work_items", {
   dueDate: timestamp("due_date", { withTimezone: true }),
   createdAt,
   updatedAt,
-});
+}, (table) => [
+  index("work_items_status_idx").on(table.status),
+  index("work_items_project_idx").on(table.projectId),
+]);
 
 export const workItemAssignees = pgTable(
   "work_item_assignees",
@@ -290,7 +301,7 @@ export const notifications = pgTable("notifications", {
   metadata: jsonb("metadata").$type<Record<string, unknown>>().notNull().default(sql`'{}'::jsonb`),
   readAt: timestamp("read_at", { withTimezone: true }),
   createdAt,
-});
+}, (table) => [index("notifications_user_unread_idx").on(table.userId, table.readAt)]);
 
 export const savedViews = pgTable("saved_views", {
   id: uuid("id").primaryKey().defaultRandom(),

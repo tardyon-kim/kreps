@@ -10,7 +10,7 @@
     "test": "pnpm --filter @kreps/shared build && vitest run",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "tsx src/db/migrate.ts",
+    "db:migrate": "pnpm --filter @kreps/shared build && tsx src/db/migrate.ts",
     "db:seed": "pnpm --filter @kreps/shared build && tsx src/db/seed.ts",
     "test:integration": "pnpm --filter @kreps/shared build && vitest run --config vitest.integration.config.ts"
   },

@@ -8,7 +8,7 @@ export const migrationStatements = [
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     parent_id uuid REFERENCES organizations(id) ON DELETE SET NULL,
     name text NOT NULL,
-    code text NOT NULL UNIQUE,
+    code text NOT NULL,
     default_locale text NOT NULL DEFAULT 'ko' CHECK (default_locale IN ('ko', 'en')),
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now()
@@ -16,7 +16,7 @@ export const migrationStatements = [
   `CREATE TABLE IF NOT EXISTS users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     organization_id uuid NOT NULL REFERENCES organizations(id),
-    email text NOT NULL UNIQUE,
+    email text NOT NULL,
     display_name text NOT NULL,
     password_hash text NOT NULL,
     locale text NOT NULL DEFAULT 'ko' CHECK (locale IN ('ko', 'en')),
@@ -55,13 +55,14 @@ export const migrationStatements = [
     updated_at timestamptz NOT NULL DEFAULT now()
   )`,
   `CREATE TABLE IF NOT EXISTS user_roles (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     role_id text NOT NULL REFERENCES roles(id) ON DELETE CASCADE,
     scope text NOT NULL CHECK (scope IN ('global', 'organization_tree', 'project', 'own_related')),
     organization_id uuid REFERENCES organizations(id),
     project_id uuid REFERENCES projects(id),
     created_at timestamptz NOT NULL DEFAULT now(),
-    PRIMARY KEY (user_id, role_id, scope)
+    CONSTRAINT user_roles_unique_scope_target UNIQUE NULLS NOT DISTINCT (user_id, role_id, scope, organization_id, project_id)
   )`,
   `CREATE TABLE IF NOT EXISTS project_members (
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
@@ -211,6 +212,8 @@ export const migrationStatements = [
     expires_at timestamptz NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS organizations_code_idx ON organizations(code)`,
+  `CREATE UNIQUE INDEX IF NOT EXISTS users_email_idx ON users(email)`,
   `CREATE INDEX IF NOT EXISTS work_items_status_idx ON work_items(status)`,
   `CREATE INDEX IF NOT EXISTS work_items_project_idx ON work_items(project_id)`,
   `CREATE INDEX IF NOT EXISTS notifications_user_unread_idx ON notifications(user_id, read_at)`,

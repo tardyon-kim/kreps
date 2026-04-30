@@ -5,10 +5,18 @@ import { getDatabaseUrl } from "./client.js";
 import { isMainModule } from "./run-main.js";
 import { rbacFixtures } from "../test/rbac-fixtures.js";
 
-const englishWorkItemId = "00000000-0000-4000-8000-000000000302";
+const seedIds = {
+  englishWorkItemId: "00000000-0000-4000-8000-000000000302",
+  koreanWorkItemCreatedHistoryId: "00000000-0000-4000-8000-000000000401",
+  englishWorkItemCreatedHistoryId: "00000000-0000-4000-8000-000000000402",
+  workOsGlossaryTermId: "00000000-0000-4000-8000-000000000501",
+  workItemGlossaryTermId: "00000000-0000-4000-8000-000000000502",
+  agentRunnerGlossaryTermId: "00000000-0000-4000-8000-000000000503",
+} as const;
 
-function passwordHash(password: string) {
-  return `scrypt$kreps-seed-admin$${scryptSync(password, "kreps-seed-admin", 64).toString("hex")}`;
+function passwordHash(password: string, saltLabel: string) {
+  const salt = `kreps-seed:${saltLabel}`;
+  return `scrypt$${salt}$${scryptSync(password, salt, 64).toString("hex")}`;
 }
 
 export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, string | undefined> = process.env) {
@@ -41,14 +49,15 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
       await sql`
         INSERT INTO users (id, organization_id, email, display_name, password_hash, locale, theme, status)
         VALUES
-          (${rbacFixtures.adminUserId}, ${rbacFixtures.rootOrganizationId}, 'admin@example.local', 'System Admin', ${passwordHash(initialPassword)}, 'ko', 'system', 'active'),
-          (${rbacFixtures.managerUserId}, ${rbacFixtures.childOrganizationId}, 'manager@example.local', 'Work Manager', ${passwordHash("ChangeMe123!")}, 'ko', 'system', 'active'),
-          (${rbacFixtures.employeeUserId}, ${rbacFixtures.childOrganizationId}, 'employee@example.local', 'Employee', ${passwordHash("ChangeMe123!")}, 'en', 'system', 'active'),
-          (${rbacFixtures.unrelatedUserId}, ${rbacFixtures.rootOrganizationId}, 'viewer@example.local', 'Viewer', ${passwordHash("ChangeMe123!")}, 'en', 'system', 'active')
+          (${rbacFixtures.adminUserId}, ${rbacFixtures.rootOrganizationId}, 'admin@example.local', 'System Admin', ${passwordHash(initialPassword, rbacFixtures.adminUserId)}, 'ko', 'system', 'active'),
+          (${rbacFixtures.managerUserId}, ${rbacFixtures.childOrganizationId}, 'manager@example.local', 'Work Manager', ${passwordHash("ChangeMe123!", rbacFixtures.managerUserId)}, 'ko', 'system', 'active'),
+          (${rbacFixtures.employeeUserId}, ${rbacFixtures.childOrganizationId}, 'employee@example.local', 'Employee', ${passwordHash("ChangeMe123!", rbacFixtures.employeeUserId)}, 'en', 'system', 'active'),
+          (${rbacFixtures.unrelatedUserId}, ${rbacFixtures.rootOrganizationId}, 'viewer@example.local', 'Viewer', ${passwordHash("ChangeMe123!", rbacFixtures.unrelatedUserId)}, 'en', 'system', 'active')
         ON CONFLICT (id) DO UPDATE SET
           organization_id = excluded.organization_id,
           email = excluded.email,
           display_name = excluded.display_name,
+          password_hash = excluded.password_hash,
           locale = excluded.locale,
           theme = excluded.theme,
           status = excluded.status,
@@ -95,13 +104,13 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
       `;
 
       await sql`
-        INSERT INTO user_roles (user_id, role_id, scope, organization_id)
+        INSERT INTO user_roles (user_id, role_id, scope, organization_id, project_id)
         VALUES
-          (${rbacFixtures.adminUserId}, 'system_admin', 'global', ${rbacFixtures.rootOrganizationId}),
-          (${rbacFixtures.managerUserId}, 'work_manager', 'organization_tree', ${rbacFixtures.childOrganizationId}),
-          (${rbacFixtures.employeeUserId}, 'employee', 'own_related', ${rbacFixtures.childOrganizationId}),
-          (${rbacFixtures.unrelatedUserId}, 'viewer', 'organization_tree', ${rbacFixtures.rootOrganizationId})
-        ON CONFLICT DO NOTHING
+          (${rbacFixtures.adminUserId}, 'system_admin', 'global', ${null}, ${null}),
+          (${rbacFixtures.managerUserId}, 'work_manager', 'organization_tree', ${rbacFixtures.childOrganizationId}, ${null}),
+          (${rbacFixtures.employeeUserId}, 'employee', 'own_related', ${rbacFixtures.childOrganizationId}, ${null}),
+          (${rbacFixtures.unrelatedUserId}, 'viewer', 'organization_tree', ${rbacFixtures.rootOrganizationId}, ${null})
+        ON CONFLICT ON CONSTRAINT user_roles_unique_scope_target DO NOTHING
       `;
 
       await sql`
@@ -116,7 +125,7 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
         INSERT INTO work_items (id, organization_id, project_id, requester_id, responsible_user_id, title, description, source_language, status, priority)
         VALUES
           (${rbacFixtures.workItemId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.projectId}, ${rbacFixtures.adminUserId}, ${rbacFixtures.managerUserId}, '업무 접수 흐름 정리', '대표/PM/직원이 요청하는 업무를 한곳에서 접수하고 배정합니다.', 'ko', 'registered', 'high'),
-          (${englishWorkItemId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.projectId}, ${rbacFixtures.managerUserId}, ${rbacFixtures.managerUserId}, 'Prepare English onboarding flow', 'Validate that multilingual work items preserve their original language.', 'en', 'assigned', 'normal')
+          (${seedIds.englishWorkItemId}, ${rbacFixtures.childOrganizationId}, ${rbacFixtures.projectId}, ${rbacFixtures.managerUserId}, ${rbacFixtures.managerUserId}, 'Prepare English onboarding flow', 'Validate that multilingual work items preserve their original language.', 'en', 'assigned', 'normal')
         ON CONFLICT (id) DO UPDATE SET
           title = excluded.title,
           description = excluded.description,
@@ -130,23 +139,37 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
         INSERT INTO work_item_assignees (work_item_id, user_id, role)
         VALUES
           (${rbacFixtures.workItemId}, ${rbacFixtures.employeeUserId}, 'assignee'),
-          (${englishWorkItemId}, ${rbacFixtures.employeeUserId}, 'assignee')
+          (${seedIds.englishWorkItemId}, ${rbacFixtures.employeeUserId}, 'assignee')
         ON CONFLICT DO NOTHING
       `;
 
       await sql`
-        INSERT INTO work_item_history (work_item_id, actor_id, action, after)
+        INSERT INTO work_item_history (id, work_item_id, actor_id, action, after)
         VALUES
-          (${rbacFixtures.workItemId}, ${rbacFixtures.adminUserId}, 'created', '{"status":"registered"}'::jsonb),
-          (${englishWorkItemId}, ${rbacFixtures.managerUserId}, 'created', '{"status":"assigned"}'::jsonb)
+          (${seedIds.koreanWorkItemCreatedHistoryId}, ${rbacFixtures.workItemId}, ${rbacFixtures.adminUserId}, 'created', '{"status":"registered"}'::jsonb),
+          (${seedIds.englishWorkItemCreatedHistoryId}, ${seedIds.englishWorkItemId}, ${rbacFixtures.managerUserId}, 'created', '{"status":"assigned"}'::jsonb)
+        ON CONFLICT (id) DO UPDATE SET
+          work_item_id = excluded.work_item_id,
+          actor_id = excluded.actor_id,
+          action = excluded.action,
+          after = excluded.after
       `;
 
       await sql`
-        INSERT INTO glossary_terms (source_term, korean_expression, english_expression, description, usage_example, scope, last_editor_id)
+        INSERT INTO glossary_terms (id, source_term, korean_expression, english_expression, description, usage_example, scope, last_editor_id)
         VALUES
-          ('Work OS', '업무 운영체계', 'Work OS', '회사 업무를 한곳에서 요청, 배정, 추적하는 시스템', 'Work OS에서 새 업무를 등록합니다.', 'global', ${rbacFixtures.adminUserId}),
-          ('업무 항목', '업무 항목', 'Work Item', '요청, 작업, 검토 이력을 가진 단위 업무', '업무 항목에 담당자를 배정합니다.', 'global', ${rbacFixtures.adminUserId}),
-          ('Agent Runner', '에이전트 실행기', 'Agent Runner', 'AI 에이전트 실행 경계를 별도로 관리하는 구성요소', 'Agent Runner는 기본 비활성화 상태입니다.', 'global', ${rbacFixtures.adminUserId})
+          (${seedIds.workOsGlossaryTermId}, 'Work OS', '업무 운영체계', 'Work OS', '회사 업무를 한곳에서 요청, 배정, 추적하는 시스템', 'Work OS에서 새 업무를 등록합니다.', 'global', ${rbacFixtures.adminUserId}),
+          (${seedIds.workItemGlossaryTermId}, '업무 항목', '업무 항목', 'Work Item', '요청, 작업, 검토 이력을 가진 단위 업무', '업무 항목에 담당자를 배정합니다.', 'global', ${rbacFixtures.adminUserId}),
+          (${seedIds.agentRunnerGlossaryTermId}, 'Agent Runner', '에이전트 실행기', 'Agent Runner', 'AI 에이전트 실행 경계를 별도로 관리하는 구성요소', 'Agent Runner는 기본 비활성화 상태입니다.', 'global', ${rbacFixtures.adminUserId})
+        ON CONFLICT (id) DO UPDATE SET
+          source_term = excluded.source_term,
+          korean_expression = excluded.korean_expression,
+          english_expression = excluded.english_expression,
+          description = excluded.description,
+          usage_example = excluded.usage_example,
+          scope = excluded.scope,
+          last_editor_id = excluded.last_editor_id,
+          updated_at = now()
       `;
 
       await sql`
