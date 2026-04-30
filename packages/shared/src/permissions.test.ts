@@ -1,5 +1,13 @@
 import { describe, expect, it } from "vitest";
-import { isValidScope, roleHasPermission } from "./permissions";
+import {
+  defaultRolePermissions,
+  isPermission,
+  isRole,
+  isValidScope,
+  permissions,
+  roleHasPermission,
+  roles,
+} from "./permissions";
 
 describe("default role permissions", () => {
   it("grants audit view to system admins", () => {
@@ -16,5 +24,17 @@ describe("default role permissions", () => {
 
   it("recognizes organization tree as a valid scope", () => {
     expect(isValidScope("organization_tree")).toBe(true);
+  });
+
+  it("exports a complete default role-permission mapping for RBAC seed data", () => {
+    expect(Object.keys(defaultRolePermissions)).toEqual([...roles]);
+    expect(defaultRolePermissions.system_admin).toEqual([...permissions]);
+  });
+
+  it("validates role and permission strings from API input", () => {
+    expect(isRole("work_manager")).toBe(true);
+    expect(isRole("manager")).toBe(false);
+    expect(isPermission("work.assign")).toBe(true);
+    expect(isPermission("work.delete")).toBe(false);
   });
 });

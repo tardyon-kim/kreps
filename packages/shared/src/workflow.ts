@@ -24,7 +24,7 @@ export const workStatusGroups: Record<WorkStatusGroup, readonly WorkStatus[]> = 
   blocked: ["on_hold", "rejected"],
 };
 
-const allowedTransitions: Record<WorkStatus, readonly WorkStatus[]> = {
+export const workStatusTransitions: Record<WorkStatus, readonly WorkStatus[]> = {
   draft: ["registered", "cancelled"],
   registered: ["awaiting_review", "approved", "assigned", "on_hold", "rejected", "cancelled"],
   awaiting_review: ["approved", "rejected", "on_hold", "cancelled"],
@@ -39,7 +39,7 @@ const allowedTransitions: Record<WorkStatus, readonly WorkStatus[]> = {
 };
 
 export function canTransitionWorkStatus(from: WorkStatus, to: WorkStatus) {
-  return allowedTransitions[from].includes(to);
+  return workStatusTransitions[from].includes(to);
 }
 
 export function getWorkStatusGroup(status: WorkStatus): WorkStatusGroup {
@@ -48,4 +48,8 @@ export function getWorkStatusGroup(status: WorkStatus): WorkStatusGroup {
   }
 
   throw new Error(`Unknown work status: ${status}`);
+}
+
+export function isWorkStatus(status: string | undefined): status is WorkStatus {
+  return typeof status === "string" && (workStatuses as readonly string[]).includes(status);
 }

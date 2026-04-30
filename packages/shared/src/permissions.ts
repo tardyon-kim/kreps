@@ -33,7 +33,7 @@ export const scopes = ["global", "organization_tree", "project", "own_related"] 
 
 export type Scope = (typeof scopes)[number];
 
-const defaultRolePermissions: Record<Role, readonly Permission[]> = {
+export const defaultRolePermissions: Record<Role, readonly Permission[]> = {
   system_admin: permissions,
   organization_admin: [
     "users.manage",
@@ -73,6 +73,14 @@ const defaultRolePermissions: Record<Role, readonly Permission[]> = {
 
 export function roleHasPermission(role: Role, permission: Permission) {
   return defaultRolePermissions[role].includes(permission);
+}
+
+export function isPermission(permission: string | undefined): permission is Permission {
+  return typeof permission === "string" && (permissions as readonly string[]).includes(permission);
+}
+
+export function isRole(role: string | undefined): role is Role {
+  return typeof role === "string" && (roles as readonly string[]).includes(role);
 }
 
 export function isValidScope(scope: string): scope is Scope {
