@@ -74,9 +74,11 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
         WHERE id <> ${seedIds.workOsGlossaryTermId}
           AND scope = 'global'
           AND source_term = 'Work OS'
+          AND korean_expression = '업무 운영체계'
           AND english_expression = 'Work OS'
           AND description = '회사 업무를 한곳에서 요청, 배정, 추적하는 시스템'
           AND usage_example = 'Work OS에서 새 업무를 등록합니다.'
+          AND last_editor_id = ${rbacFixtures.adminUserId}
       `;
 
       await sql`
@@ -84,9 +86,11 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
         WHERE id <> ${seedIds.workItemGlossaryTermId}
           AND scope = 'global'
           AND source_term = '업무 항목'
+          AND korean_expression = '업무 항목'
           AND english_expression = 'Work Item'
           AND description = '요청, 작업, 검토 이력을 가진 단위 업무'
           AND usage_example = '업무 항목에 담당자를 배정합니다.'
+          AND last_editor_id = ${rbacFixtures.adminUserId}
       `;
 
       await sql`
@@ -94,9 +98,11 @@ export async function seed(databaseUrl = getDatabaseUrl(), env: Record<string, s
         WHERE id <> ${seedIds.agentRunnerGlossaryTermId}
           AND scope = 'global'
           AND source_term = 'Agent Runner'
+          AND korean_expression = '에이전트 실행기'
           AND english_expression = 'Agent Runner'
           AND description = 'AI 에이전트 실행 경계를 별도로 관리하는 구성요소'
           AND usage_example = 'Agent Runner는 기본 비활성화 상태입니다.'
+          AND last_editor_id = ${rbacFixtures.adminUserId}
       `;
 
       await sql`

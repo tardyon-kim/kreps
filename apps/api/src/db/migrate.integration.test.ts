@@ -7,6 +7,7 @@ import { rbacFixtures } from "../test/rbac-fixtures.js";
 
 const legacyEnglishWorkItemId = "00000000-0000-4000-8000-000000000302";
 const userGlossaryTermId = "00000000-0000-4000-8000-000000000903";
+const editedLegacyGlossaryTermId = "00000000-0000-4000-8000-000000000904";
 
 async function createLegacyTask3SeededDatabase(sql: postgres.Sql) {
   await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
@@ -163,7 +164,8 @@ async function createLegacyTask3SeededDatabase(sql: postgres.Sql) {
       (gen_random_uuid(), 'Work OS', '업무 운영체계', 'Work OS', '회사 업무를 한곳에서 요청, 배정, 추적하는 시스템', 'Work OS에서 새 업무를 등록합니다.', 'global', ${rbacFixtures.adminUserId}),
       (gen_random_uuid(), '업무 항목', '업무 항목', 'Work Item', '요청, 작업, 검토 이력을 가진 단위 업무', '업무 항목에 담당자를 배정합니다.', 'global', ${rbacFixtures.adminUserId}),
       (gen_random_uuid(), 'Agent Runner', '에이전트 실행기', 'Agent Runner', 'AI 에이전트 실행 경계를 별도로 관리하는 구성요소', 'Agent Runner는 기본 비활성화 상태입니다.', 'global', ${rbacFixtures.adminUserId}),
-      (${userGlossaryTermId}, 'Internal Work OS', 'Custom Work OS', 'Work OS', 'User-created glossary term', 'Keep this row', 'global', ${rbacFixtures.adminUserId})
+      (${userGlossaryTermId}, 'Internal Work OS', 'Custom Work OS', 'Work OS', 'User-created glossary term', 'Keep this row', 'global', ${rbacFixtures.adminUserId}),
+      (${editedLegacyGlossaryTermId}, 'Work OS', '사용자 수정 업무 운영체계', 'Work OS', '회사 업무를 한곳에서 요청, 배정, 추적하는 시스템', 'Work OS에서 새 업무를 등록합니다.', 'global', ${rbacFixtures.adminUserId})
   `;
 }
 
@@ -295,6 +297,7 @@ describe("database migration compatibility", () => {
         seeded_history_count: number;
         seeded_glossary_count: number;
         user_glossary_count: number;
+        edited_legacy_glossary_count: number;
         organization_code_unique_indexes_count: number;
         users_email_unique_indexes_count: number;
       }[]>`
@@ -307,6 +310,7 @@ describe("database migration compatibility", () => {
           (SELECT count(*)::int FROM work_item_history WHERE action = 'created' AND work_item_id IN (${rbacFixtures.workItemId}, ${legacyEnglishWorkItemId})) AS seeded_history_count,
           (SELECT count(*)::int FROM glossary_terms WHERE id IN ('00000000-0000-4000-8000-000000000501', '00000000-0000-4000-8000-000000000502', '00000000-0000-4000-8000-000000000503')) AS seeded_glossary_count,
           (SELECT count(*)::int FROM glossary_terms WHERE id = ${userGlossaryTermId} AND english_expression = 'Work OS' AND description = 'User-created glossary term') AS user_glossary_count,
+          (SELECT count(*)::int FROM glossary_terms WHERE id = ${editedLegacyGlossaryTermId} AND korean_expression = '사용자 수정 업무 운영체계') AS edited_legacy_glossary_count,
           (SELECT count(*)::int FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'organizations' AND indexdef LIKE 'CREATE UNIQUE INDEX%' AND indexdef LIKE '%(code)%') AS organization_code_unique_indexes_count,
           (SELECT count(*)::int FROM pg_indexes WHERE schemaname = 'public' AND tablename = 'users' AND indexdef LIKE 'CREATE UNIQUE INDEX%' AND indexdef LIKE '%(email)%') AS users_email_unique_indexes_count
       `;
@@ -320,6 +324,7 @@ describe("database migration compatibility", () => {
         seeded_history_count: 2,
         seeded_glossary_count: 3,
         user_glossary_count: 1,
+        edited_legacy_glossary_count: 1,
         organization_code_unique_indexes_count: 1,
         users_email_unique_indexes_count: 1,
       });
