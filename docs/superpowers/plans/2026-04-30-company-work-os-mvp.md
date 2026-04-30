@@ -4,7 +4,7 @@
 
 **Goal:** Build the first usable on-premise company Work OS that centralizes internal work requests, ownership, project work, comments, files, multilingual UI, translation review data, theme preferences, audit history, and deployment operations.
 
-**Architecture:** Use a TypeScript monorepo with a React SPA frontend, a Fastify API backend, shared domain rules, and PostgreSQL as the source of truth. The API owns workflow, RBAC, audit history, file metadata, translation metadata, notification generation, and Agent Runner configuration; the web app stays fast and predictable through API-backed lists, detail panels, optimistic-safe mutations, and local design tokens. Deployment is Docker Compose based, with no CDN or runtime external network dependency.
+**Architecture:** Use a TypeScript monorepo with a React SPA frontend, a Fastify API backend, shared domain rules, and PostgreSQL as the source of truth. The API owns workflow, RBAC, audit history, file metadata, translation metadata, notification generation, and Agent Runner configuration; the web app stays fast and predictable through API-backed lists, detail panels, optimistic-safe mutations, and local design tokens. Implementation is gated by early Phase 0 and Phase 1 validation so the first working work-management loop is proven before broader modules expand. Deployment is Docker Compose based, with no CDN or runtime external network dependency.
 
 **Tech Stack:** Node.js 22 LTS, pnpm workspaces, TypeScript, Fastify, Drizzle ORM, PostgreSQL 16, React, Vite, TanStack Router, TanStack Query, lucide-react, Vitest, Testing Library, Playwright, Docker Compose.
 
@@ -26,6 +26,44 @@ The first multilingual workflow is:
 
 `choose Korean or English UI -> create original-language content -> store source language -> add/review translation -> maintain glossary terms`
 
+## Review-Driven Execution Adjustment
+
+External review found that the product direction fits the user's purpose, but the original MVP execution order was too broad for the first implementation pass. Keep the same target product, but execute it through these gates:
+
+### Phase 0: Foundation And Restricted-Network Smoke
+
+Phase 0 proves the app can be built, tested, and packaged without accidentally depending on external runtime assets.
+
+Required before moving to Phase 1:
+
+- Root workspace, shared domain package, minimal API app, minimal web shell, and PostgreSQL Compose service exist.
+- `GET /health` returns configured database, file storage, and disabled Agent Runner status.
+- Korean and English app shell labels render from dictionaries.
+- Light and dark theme tokens exist.
+- `docker compose -f infra/compose.yml config` passes.
+- `scripts/check-offline-assets.mjs` scans the built web output and fails on CDN, external font, external script, or external stylesheet URLs.
+- API integration tests have a real PostgreSQL test database path, migration hook, seed hook, file temp directory, and RBAC fixture contract.
+
+### Phase 1: First Usable Work Loop
+
+Phase 1 proves the actual company workflow before dashboards and broader modules expand.
+
+Required before moving to Phase 2:
+
+- Login works with seeded admin and employee users.
+- User can open `내 업무`.
+- User can quick-create a work item with source language.
+- Work manager can assign responsible user and assignee.
+- Valid status transition works and invalid status transition is rejected.
+- User can add a comment.
+- Work item history records creation, assignment, status change, and comment.
+- Playwright smoke test covers the above in Korean and English at desktop viewport.
+- The core loop works when `AGENT_RUNNER_ENABLED=false`.
+
+### Phase 2: Broader MVP Modules
+
+Only after Phase 1 passes, implement project boards, richer translation review UI, notifications, dashboards, saved views, release packaging, backup, and restore. Keep the data foundations for these features early, but do not let them delay the first usable work loop.
+
 ## Repository And File Structure
 
 Create the project as a monorepo:
@@ -41,10 +79,16 @@ Create the project as a monorepo:
 - `infra/compose.yml`: on-prem Docker Compose stack.
 - `infra/nginx/default.conf`: internal reverse proxy config for local/on-prem use.
 - `scripts/dev.ps1`: starts local development services on Windows.
+- `scripts/dev.sh`: starts local development services on Linux servers or developer machines.
 - `scripts/test.ps1`: runs local verification in one command.
+- `scripts/test.sh`: Linux equivalent for local verification.
+- `scripts/check-offline-assets.mjs`: scans web build output for runtime external asset URLs.
 - `scripts/backup.ps1`: creates PostgreSQL and file-storage backups.
+- `scripts/backup.sh`: Linux backup equivalent.
 - `scripts/restore.ps1`: restores a backup into a named environment.
+- `scripts/restore.sh`: Linux restore equivalent.
 - `scripts/release-package.ps1`: creates an offline-friendly release folder.
+- `scripts/release-package.sh`: Linux release packaging equivalent.
 - `docs/operations/onprem-install.md`: operator installation guide.
 - `docs/operations/backup-restore.md`: backup and restore guide.
 - `docs/architecture/adr-0001-tech-stack.md`: records the stack decision.
@@ -115,6 +159,10 @@ The initial themes are `system`, `light`, and `dark`.
 - Create: `.editorconfig`
 - Create: `.gitattributes`
 - Create: `.env.example`
+- Create: `infra/compose.yml`
+- Create: `scripts/test.ps1`
+- Create: `scripts/test.sh`
+- Create: `scripts/check-offline-assets.mjs`
 - Create: `docs/architecture/adr-0001-tech-stack.md`
 
 - [ ] **Step 1: Create root workspace files**
@@ -219,7 +267,104 @@ The system must run on an internal network, avoid runtime CDN dependencies, supp
 All build, test, database, backup, and release commands must be local scripts, so GitHub Actions and Gitea Actions can both call the same commands. The web app must bundle all static assets. The API must keep AI/Agent Runner integration behind configuration and safe disabled defaults.
 ```
 
-- [ ] **Step 4: Install dependencies**
+- [ ] **Step 4: Create early Compose and verification scripts**
+
+Create `infra/compose.yml` with a Phase 0 PostgreSQL service. Later tasks modify this file into the full on-prem stack.
+
+```yaml
+name: kreps-work-os
+
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: kreps
+      POSTGRES_USER: kreps
+      POSTGRES_PASSWORD: kreps_dev_password
+    ports:
+      - "5432:5432"
+    volumes:
+      - kreps_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kreps -d kreps"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  kreps_postgres:
+```
+
+Create `scripts/check-offline-assets.mjs`:
+
+```js
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const distDir = process.argv[2] ?? "apps/web/dist";
+const forbidden = [
+  /https?:\/\/[^"')\s]+/gi,
+  /\/\/fonts\.(googleapis|gstatic)\.com/gi,
+  /cdn\.[^"')\s]+/gi,
+];
+
+function walk(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    return entry.isDirectory() ? walk(path) : [path];
+  });
+}
+
+if (!existsSync(distDir)) {
+  console.log(`offline asset scan skipped: ${distDir} does not exist yet`);
+  process.exit(0);
+}
+
+const offenders = [];
+for (const file of walk(distDir)) {
+  if (!/\.(html|js|css|json)$/.test(file)) continue;
+  const content = readFileSync(file, "utf8");
+  for (const pattern of forbidden) {
+    const matches = content.match(pattern);
+    if (matches) offenders.push(`${file}: ${matches.join(", ")}`);
+  }
+}
+
+if (offenders.length > 0) {
+  console.error("External runtime asset references found:");
+  console.error(offenders.join("\n"));
+  process.exit(1);
+}
+
+console.log("offline asset scan passed");
+```
+
+Create `scripts/test.ps1`:
+
+```powershell
+$ErrorActionPreference = "Stop"
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+docker compose -f infra/compose.yml config
+node scripts/check-offline-assets.mjs
+```
+
+Create `scripts/test.sh`:
+
+```sh
+#!/usr/bin/env sh
+set -eu
+pnpm lint
+pnpm typecheck
+pnpm test
+pnpm build
+docker compose -f infra/compose.yml config
+node scripts/check-offline-assets.mjs
+```
+
+- [ ] **Step 5: Install dependencies**
 
 Run:
 
@@ -230,12 +375,23 @@ pnpm install
 
 Expected: `pnpm-lock.yaml` is created and no package install errors remain.
 
-- [ ] **Step 5: Commit scaffold**
+- [ ] **Step 6: Verify Phase 0 scaffold**
 
 Run:
 
 ```powershell
-git add package.json pnpm-workspace.yaml tsconfig.base.json .editorconfig .gitattributes .env.example docs/architecture/adr-0001-tech-stack.md pnpm-lock.yaml
+docker compose -f infra/compose.yml config
+node scripts/check-offline-assets.mjs
+```
+
+Expected: Compose config prints a valid normalized config, and the offline asset scan reports that `apps/web/dist` does not exist yet or passes.
+
+- [ ] **Step 7: Commit scaffold**
+
+Run:
+
+```powershell
+git add package.json pnpm-workspace.yaml tsconfig.base.json .editorconfig .gitattributes .env.example infra/compose.yml scripts/test.ps1 scripts/test.sh scripts/check-offline-assets.mjs docs/architecture/adr-0001-tech-stack.md pnpm-lock.yaml
 git commit -m "chore: scaffold Work OS monorepo"
 ```
 
@@ -348,12 +504,16 @@ Expected: tests pass, typecheck passes.
 
 - Create: `apps/api/package.json`
 - Create: `apps/api/tsconfig.json`
+- Create: `apps/api/vitest.integration.config.ts`
 - Create: `apps/api/drizzle.config.ts`
 - Create: `apps/api/src/db/schema.ts`
 - Create: `apps/api/src/db/client.ts`
 - Create: `apps/api/src/db/migrate.ts`
 - Create: `apps/api/src/db/seed.ts`
 - Create: `apps/api/src/db/schema.test.ts`
+- Create: `apps/api/src/test/test-context.ts`
+- Create: `apps/api/src/test/rbac-fixtures.ts`
+- Create: `apps/api/src/test/test-context.test.ts`
 
 - [ ] **Step 1: Create API package and dependencies**
 
@@ -372,11 +532,122 @@ Scripts:
   "typecheck": "tsc -p tsconfig.json --noEmit",
   "db:generate": "drizzle-kit generate",
   "db:migrate": "tsx src/db/migrate.ts",
-  "db:seed": "tsx src/db/seed.ts"
+  "db:seed": "tsx src/db/seed.ts",
+  "test:integration": "vitest run --config vitest.integration.config.ts"
 }
 ```
 
-- [ ] **Step 2: Write schema smoke test**
+Create `apps/api/vitest.integration.config.ts`:
+
+```ts
+import { defineConfig } from "vitest/config";
+
+export default defineConfig({
+  test: {
+    include: ["src/**/*.integration.test.ts"],
+    pool: "threads",
+    isolate: true,
+    testTimeout: 30000,
+  },
+});
+```
+
+- [ ] **Step 2: Write failing test-context tests**
+
+Create `apps/api/src/test/test-context.test.ts`:
+
+```ts
+import { describe, expect, it } from "vitest";
+import { getRequiredTestDatabaseUrl, createTestFileStorageDir } from "./test-context";
+
+describe("API integration test context", () => {
+  it("requires TEST_DATABASE_URL for database-backed tests", () => {
+    expect(() => getRequiredTestDatabaseUrl({})).toThrow("TEST_DATABASE_URL is required");
+  });
+
+  it("creates an isolated temporary file storage directory", async () => {
+    const dir = await createTestFileStorageDir();
+    expect(dir).toContain("kreps-test-files-");
+  });
+});
+```
+
+Run:
+
+```powershell
+pnpm --filter @kreps/api test -- test-context.test.ts
+```
+
+Expected: FAIL because the test context helper does not exist.
+
+- [ ] **Step 3: Implement test context helpers**
+
+Create `apps/api/src/test/test-context.ts`:
+
+```ts
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+type TestContextOptions = {
+  env?: Record<string, string | undefined>;
+  migrate?: (databaseUrl: string) => Promise<void>;
+  seed?: (databaseUrl: string) => Promise<void>;
+};
+
+export function getRequiredTestDatabaseUrl(env: Record<string, string | undefined> = process.env) {
+  const value = env.TEST_DATABASE_URL;
+  if (!value) {
+    throw new Error("TEST_DATABASE_URL is required for API integration tests");
+  }
+  return value;
+}
+
+export async function createTestFileStorageDir() {
+  return mkdtemp(join(tmpdir(), "kreps-test-files-"));
+}
+
+export async function createApiTestContext(options: TestContextOptions = {}) {
+  const env = options.env ?? process.env;
+  const databaseUrl = getRequiredTestDatabaseUrl(env);
+  const fileStorageDir = await createTestFileStorageDir();
+  await options.migrate?.(databaseUrl);
+  await options.seed?.(databaseUrl);
+
+  return {
+    databaseUrl,
+    fileStorageDir,
+    cleanup: async () => {
+      await rm(fileStorageDir, { recursive: true, force: true });
+    },
+  };
+}
+```
+
+Create `apps/api/src/test/rbac-fixtures.ts`:
+
+```ts
+export const rbacFixtures = {
+  rootOrganizationId: "00000000-0000-4000-8000-000000000001",
+  childOrganizationId: "00000000-0000-4000-8000-000000000002",
+  adminUserId: "00000000-0000-4000-8000-000000000101",
+  managerUserId: "00000000-0000-4000-8000-000000000102",
+  employeeUserId: "00000000-0000-4000-8000-000000000103",
+  unrelatedUserId: "00000000-0000-4000-8000-000000000104",
+  projectId: "00000000-0000-4000-8000-000000000201",
+  workItemId: "00000000-0000-4000-8000-000000000301",
+} as const;
+```
+
+Run:
+
+```powershell
+pnpm --filter @kreps/api test -- test-context.test.ts
+```
+
+Expected: PASS.
+
+- [ ] **Step 4: Write schema smoke test**
 
 Create `apps/api/src/db/schema.test.ts`:
 
@@ -411,7 +682,7 @@ pnpm --filter @kreps/api test -- schema.test.ts
 
 Expected: FAIL because schema files are missing.
 
-- [ ] **Step 3: Implement schema**
+- [ ] **Step 5: Implement schema**
 
 Create Drizzle tables for:
 
@@ -423,12 +694,14 @@ Create Drizzle tables for:
 - `comments`, `attachments`, `workItemHistory`.
 - `contentTranslations`, `glossaryTerms`.
 - `notifications`, `savedViews`.
-- `agentSettings`, `agentRunRequests`.
+- `agentSettings`.
 - `sessions`.
 
 Use UUID primary keys with database defaults. Use text enums from `packages/shared` values for status, priority, locale, theme, and scope.
 
-- [ ] **Step 4: Implement seed**
+Do not create an `agentRunRequests` table in the MVP. Agent execution request storage belongs to the later Agent Runner phase, after human review of the execution boundary.
+
+- [ ] **Step 6: Implement seed**
 
 Create a seed that inserts:
 
@@ -439,18 +712,18 @@ Create a seed that inserts:
 - Two sample work items in Korean and English.
 - Three glossary terms: `Work OS`, `업무 항목`, `Agent Runner`.
 
-- [ ] **Step 5: Verify and commit database foundation**
+- [ ] **Step 7: Verify and commit database foundation**
 
 Run:
 
 ```powershell
-pnpm --filter @kreps/api test -- schema.test.ts
+pnpm --filter @kreps/api test -- test-context.test.ts schema.test.ts
 pnpm --filter @kreps/api typecheck
 git add apps/api
 git commit -m "feat: add database schema and seed foundation"
 ```
 
-Expected: schema test and typecheck pass.
+Expected: test-context test, schema test, and typecheck pass. Database-backed integration tests must use `TEST_DATABASE_URL`; unit tests must not silently substitute an in-memory database.
 
 ## Task 4: API App, Config, Health, And Audit
 
@@ -673,17 +946,23 @@ git commit -m "feat: add organization and user management"
 
 ## Task 8: Work Item Core Workflow
 
+This task is the Phase 1 gate. Do not start dashboards, saved views, rich project screens, notification expansion, or release packaging until this task has a passing API test suite and a passing Playwright smoke test for the first usable work loop.
+
 **Files:**
 
 - Create: `apps/api/src/modules/work/work.routes.ts`
 - Create: `apps/api/src/modules/work/work.service.ts`
 - Create: `apps/api/src/modules/work/work.test.ts`
+- Create: `apps/api/src/modules/comments/comment.routes.ts`
+- Create: `apps/api/src/modules/comments/comment.service.ts`
+- Create: `apps/api/src/modules/comments/comment.test.ts`
 - Create: `apps/web/src/features/work/MyWorkPage.tsx`
 - Create: `apps/web/src/features/work/AllWorkPage.tsx`
 - Create: `apps/web/src/features/work/QuickCreateWorkDialog.tsx`
 - Create: `apps/web/src/features/work/WorkDetailPanel.tsx`
 - Create: `apps/web/src/features/work/WorkStatusBoard.tsx`
 - Create: `apps/web/src/features/work/work.api.ts`
+- Create: `apps/web/e2e/core-work-loop.spec.ts`
 
 - [ ] **Step 1: Write API workflow tests**
 
@@ -694,35 +973,52 @@ Test that:
 - `PATCH /api/work-items/:id/status` rejects invalid transitions from `rejected` to `completed`.
 - `PATCH /api/work-items/:id/assignment` requires `work.assign`.
 - `GET /api/work-items/:id/history` requires related access or `audit.view`.
+- `POST /api/work-items/:id/comments` creates a comment, preserves source language, and adds history.
 
 - [ ] **Step 2: Implement work API**
 
-Use the shared workflow transition rules. Store status changes in `workItemHistory` with actor, old status, new status, reason, and timestamp. Keep source title/description language separate from translated content.
+Use the shared workflow transition rules. Store creation, assignment, status changes, and comments in `workItemHistory` with actor, before/after values, reason where relevant, and timestamp. Keep source title/description/comment language separate from translated content.
 
 - [ ] **Step 3: Implement web work views**
 
-`MyWorkPage` shows today, awaiting review, due soon, translation needed, and overdue groups. `AllWorkPage` shows table filters for status, priority, organization, project, assignee, due date, and saved views. `WorkDetailPanel` supports status change, assignment, checklist, comments tab, files tab, translation tab, and history tab.
+`MyWorkPage` shows today, awaiting review, due soon, translation needed, and overdue groups. `AllWorkPage` shows table filters for status, priority, organization, project, assignee, and due date. `WorkDetailPanel` supports status change, assignment, checklist, comments tab, translation status summary, and history tab. Saved views and full translation review UI wait for later tasks.
 
-- [ ] **Step 4: Verify and commit**
+- [ ] **Step 4: Add Phase 1 Playwright smoke test**
+
+Create `apps/web/e2e/core-work-loop.spec.ts` for:
+
+```text
+login as seeded work manager -> switch language to English -> switch dark theme -> quick create work item -> open My Work -> assign employee -> move to in_progress -> add comment -> move to completion_reported -> verify history contains create, assign, status, comment, status
+```
 
 Run:
 
 ```powershell
-pnpm --filter @kreps/api test -- work.test.ts
+pnpm --filter @kreps/web test:e2e -- core-work-loop.spec.ts
+```
+
+Expected: PASS at desktop viewport. Add mobile viewport coverage before Phase 2 if any sidebar or detail panel text overflows.
+
+- [ ] **Step 5: Verify and commit**
+
+Run:
+
+```powershell
+pnpm --filter @kreps/api test -- work.test.ts comment.test.ts
 pnpm --filter @kreps/web test
+pnpm --filter @kreps/web test:e2e -- core-work-loop.spec.ts
 pnpm verify
-git add apps/api/src/modules/work apps/web/src/features/work
+git add apps/api/src/modules/work apps/api/src/modules/comments apps/web/src/features/work apps/web/e2e/core-work-loop.spec.ts
 git commit -m "feat: add work item workflow"
 ```
 
-## Task 9: Projects, Comments, And Attachments
+## Task 9: Projects And Attachments
 
 **Files:**
 
 - Create: `apps/api/src/modules/projects/project.routes.ts`
 - Create: `apps/api/src/modules/projects/project.service.ts`
 - Create: `apps/api/src/modules/projects/project.test.ts`
-- Create: `apps/api/src/modules/comments/comment.routes.ts`
 - Create: `apps/api/src/modules/files/file.routes.ts`
 - Create: `apps/api/src/modules/files/file-storage.ts`
 - Create: `apps/web/src/features/projects/ProjectsPage.tsx`
@@ -732,9 +1028,9 @@ git commit -m "feat: add work item workflow"
 
 Test project create/update/member management, project work item linking, and project board grouping by work status group.
 
-- [ ] **Step 2: Write comment/file API tests**
+- [ ] **Step 2: Write file API tests**
 
-Test comment creation with source language, mention notification creation, file upload metadata, file size limit from `MAX_UPLOAD_BYTES`, and related work item/project access checks.
+Test file upload metadata, file size limit from `MAX_UPLOAD_BYTES`, and related work item/project access checks.
 
 - [ ] **Step 3: Implement services**
 
@@ -751,8 +1047,8 @@ Run:
 ```powershell
 pnpm --filter @kreps/api test -- project.test.ts
 pnpm verify
-git add apps/api/src/modules/projects apps/api/src/modules/comments apps/api/src/modules/files apps/web/src/features/projects
-git commit -m "feat: add projects comments and attachments"
+git add apps/api/src/modules/projects apps/api/src/modules/files apps/web/src/features/projects
+git commit -m "feat: add projects and attachments"
 ```
 
 ## Task 10: Translation, Glossary, Notifications, Agent Settings
@@ -801,6 +1097,8 @@ Create notification records for assignment, requested status change, approval re
 
 when `AGENT_RUNNER_ENABLED=false`. No Claude Code CLI execution is allowed in the main API process.
 
+Add an API test that verifies `POST /api/agent/run` returns `404` or `405` in the MVP. Do not add job creation, queue storage, CLI invocation, or `agentRunRequests` writes in this task. The only MVP Agent Runner surface is configuration visibility and disabled-safe status.
+
 - [ ] **Step 5: Verify and commit**
 
 Run:
@@ -812,7 +1110,9 @@ git add apps/api/src/modules/translations apps/api/src/modules/glossary apps/api
 git commit -m "feat: add translation glossary notifications and agent settings"
 ```
 
-## Task 11: Dashboard, Saved Views, And Browser Verification
+## Task 11: Phase 2 Dashboards, Saved Views, And Browser Verification
+
+Start this task only after the Phase 1 core work loop passes. Dashboards and saved views improve daily operation, but they must not block the first usable 업무 등록/배정/상태/이력 workflow.
 
 **Files:**
 
@@ -838,7 +1138,7 @@ Saved views store owner, name, route, filters, sort, columns, density, and defau
 
 - [ ] **Step 3: Implement Playwright E2E**
 
-Create a browser test for:
+Create a broader regression browser test for:
 
 ```text
 login -> change language to English -> switch dark theme -> quick create work item -> open detail panel -> assign -> move to in_progress -> add comment -> mark completion_reported -> verify history
@@ -868,15 +1168,20 @@ git commit -m "feat: add dashboards saved views and e2e workflow"
 
 **Files:**
 
-- Create: `infra/compose.yml`
+- Modify: `infra/compose.yml`
 - Create: `infra/nginx/default.conf`
 - Create: `apps/api/Dockerfile`
 - Create: `apps/web/Dockerfile`
 - Create: `scripts/dev.ps1`
-- Create: `scripts/test.ps1`
+- Create: `scripts/dev.sh`
+- Modify: `scripts/test.ps1`
+- Modify: `scripts/test.sh`
 - Create: `scripts/backup.ps1`
+- Create: `scripts/backup.sh`
 - Create: `scripts/restore.ps1`
+- Create: `scripts/restore.sh`
 - Create: `scripts/release-package.ps1`
+- Create: `scripts/release-package.sh`
 - Create: `docs/operations/onprem-install.md`
 - Create: `docs/operations/backup-restore.md`
 
@@ -891,6 +1196,8 @@ Compose services:
 
 Do not use CDN, external fonts, or external scripts.
 
+The production install path must not require the production server to run `pnpm install`, pull base images from the public internet, or build containers. Build images in a connected build environment, then export/import image tar files or push them to an internal registry.
+
 - [ ] **Step 2: Create backup and restore scripts**
 
 `scripts/backup.ps1` creates:
@@ -900,6 +1207,8 @@ Do not use CDN, external fonts, or external scripts.
 - A manifest containing app version, timestamp, database dump file, file archive, and SHA-256 hashes.
 
 `scripts/restore.ps1` requires an explicit backup folder path and target database URL. It prints the target before restoring and refuses to run when the backup manifest is missing.
+
+Create `.sh` equivalents with the same behavior for Linux on-prem servers. Both PowerShell and shell scripts must refuse to restore when the manifest hash does not match the dump or file archive.
 
 - [ ] **Step 3: Create release package script**
 
@@ -913,6 +1222,9 @@ Do not use CDN, external fonts, or external scripts.
 - API build output
 - `pnpm-lock.yaml`
 - generated migration files
+- container image tar files or instructions for internal registry image tags
+
+`scripts/release-package.sh` creates the same release folder on Linux.
 
 - [ ] **Step 4: Write operations docs**
 
@@ -925,6 +1237,7 @@ Do not use CDN, external fonts, or external scripts.
 5. health check,
 6. first login,
 7. how to disable Agent Runner safely.
+8. how to install from prebuilt image tar files without external internet.
 
 `backup-restore.md` must include:
 
@@ -933,6 +1246,7 @@ Do not use CDN, external fonts, or external scripts.
 3. backup storage permissions,
 4. quarterly restore rehearsal recommendation,
 5. verification checklist after restore.
+6. restore rehearsal command against a disposable database.
 
 - [ ] **Step 5: Verify and commit deployment**
 
@@ -941,6 +1255,7 @@ Run:
 ```powershell
 pnpm verify
 docker compose -f infra/compose.yml config
+node scripts/check-offline-assets.mjs apps/web/dist
 git add infra apps/api/Dockerfile apps/web/Dockerfile scripts docs/operations
 git commit -m "feat: add on-prem deployment and operations"
 ```
@@ -969,6 +1284,8 @@ README must include:
 Checklist items:
 
 - login works,
+- Phase 0 health and offline asset checks pass,
+- Phase 1 core work loop Playwright smoke test passes,
 - Korean and English UI work,
 - light and dark themes work,
 - admin can create organization and users,
@@ -987,6 +1304,7 @@ Checklist items:
 - backup script creates manifest,
 - restore script refuses invalid backup folder,
 - app builds without external runtime assets.
+- production install can use prebuilt image tar files or internal registry tags.
 
 - [ ] **Step 3: Run full verification**
 
@@ -997,6 +1315,7 @@ pnpm install --frozen-lockfile
 pnpm verify
 pnpm --filter @kreps/web test:e2e
 docker compose -f infra/compose.yml config
+node scripts/check-offline-assets.mjs apps/web/dist
 ```
 
 Expected: all commands pass.
@@ -1023,12 +1342,16 @@ Spec coverage:
 - Quiet, fast, polished UI with app shell, sidebar, top bar, detail panel, status badges, saved views, dashboards, and responsive verification is covered by Tasks 6, 8, and 11.
 - On-premise, restricted-network deployment, backup, restore, health checks, no runtime CDN, and GitHub/Gitea-neutral scripts are covered by Tasks 1, 12, and 13.
 - Agent Runner is intentionally limited to disabled-safe configuration and status in Task 10, matching the 1st MVP boundary.
+- Review feedback about scope is covered by Phase 0 and Phase 1 gates, which force early validation of health, restricted-network assumptions, and the first usable work loop before Phase 2 modules expand.
+- Review feedback about test infrastructure is covered by Task 3 test context requirements for `TEST_DATABASE_URL`, migration hooks, isolated file storage, and RBAC fixtures.
+- Review feedback about Agent Runner overreach is covered by removing `agentRunRequests` from the MVP schema and requiring `POST /api/agent/run` to remain unavailable.
 
 Placeholder scan:
 
 - No task depends on unspecified external systems.
 - No task asks workers to invent behavior without a test or a file target.
 - Advanced approval routing, automatic AI execution, mobile app, ERP functions, and external SaaS sync remain outside this MVP by product decision.
+- Dashboards, saved views, richer project screens, and release packaging are explicitly Phase 2 after the Phase 1 core work loop passes.
 
 Type consistency:
 
