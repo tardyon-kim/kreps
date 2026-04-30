@@ -64,6 +64,45 @@ export const migrationStatements = [
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT user_roles_unique_scope_target UNIQUE NULLS NOT DISTINCT (user_id, role_id, scope, organization_id, project_id)
   )`,
+  `ALTER TABLE user_roles ADD COLUMN IF NOT EXISTS id uuid`,
+  `UPDATE user_roles SET id = gen_random_uuid() WHERE id IS NULL`,
+  `ALTER TABLE user_roles ALTER COLUMN id SET DEFAULT gen_random_uuid()`,
+  `ALTER TABLE user_roles ALTER COLUMN id SET NOT NULL`,
+  `DO $$
+  DECLARE
+    current_pkey_columns text[];
+  BEGIN
+    SELECT array_agg(attribute.attname ORDER BY key_column.ordinality)
+    INTO current_pkey_columns
+    FROM pg_constraint constraint_row
+    JOIN unnest(constraint_row.conkey) WITH ORDINALITY AS key_column(attnum, ordinality) ON true
+    JOIN pg_attribute attribute
+      ON attribute.attrelid = constraint_row.conrelid
+     AND attribute.attnum = key_column.attnum
+    WHERE constraint_row.conrelid = 'user_roles'::regclass
+      AND constraint_row.conname = 'user_roles_pkey';
+
+    IF current_pkey_columns IS DISTINCT FROM ARRAY['id'] THEN
+      IF current_pkey_columns IS NOT NULL THEN
+        ALTER TABLE user_roles DROP CONSTRAINT user_roles_pkey;
+      END IF;
+
+      ALTER TABLE user_roles ADD CONSTRAINT user_roles_pkey PRIMARY KEY (id);
+    END IF;
+  END $$`,
+  `DO $$
+  BEGIN
+    IF NOT EXISTS (
+      SELECT 1
+      FROM pg_constraint
+      WHERE conrelid = 'user_roles'::regclass
+        AND conname = 'user_roles_unique_scope_target'
+    ) THEN
+      ALTER TABLE user_roles
+        ADD CONSTRAINT user_roles_unique_scope_target
+        UNIQUE NULLS NOT DISTINCT (user_id, role_id, scope, organization_id, project_id);
+    END IF;
+  END $$`,
   `CREATE TABLE IF NOT EXISTS project_members (
     project_id uuid NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
     user_id uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
