@@ -41,6 +41,31 @@ export type Dictionary = {
     columnStatus: string;
     columnDue: string;
   };
+  organizationPage: {
+    title: string;
+    subtitle: string;
+    treeTitle: string;
+    usersTitle: string;
+    organizationColumn: string;
+    codeColumn: string;
+    userColumn: string;
+    roleColumn: string;
+  };
+  roles: {
+    systemAdmin: string;
+    organizationAdmin: string;
+    workManager: string;
+    employee: string;
+  };
+  settingsPage: {
+    title: string;
+    subtitle: string;
+    preferencesTitle: string;
+    languageLabel: string;
+    themeLabel: string;
+    previewTitle: string;
+    previewBody: string;
+  };
   status: {
     registered: string;
     assigned: string;
@@ -91,6 +116,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       columnStatus: "상태",
       columnDue: "기한",
     },
+    organizationPage: {
+      title: "조직",
+      subtitle: "자유로운 계층형 조직과 사용자 역할을 한 화면에서 확인합니다.",
+      treeTitle: "조직도",
+      usersTitle: "사용자",
+      organizationColumn: "조직",
+      codeColumn: "코드",
+      userColumn: "사용자",
+      roleColumn: "역할",
+    },
+    roles: {
+      systemAdmin: "시스템 관리자",
+      organizationAdmin: "조직 관리자",
+      workManager: "업무 관리자",
+      employee: "직원",
+    },
+    settingsPage: {
+      title: "사용자 설정",
+      subtitle: "언어와 테마는 즉시 화면에 반영됩니다.",
+      preferencesTitle: "표시 환경",
+      languageLabel: "설정 언어",
+      themeLabel: "설정 테마",
+      previewTitle: "현재 적용 상태",
+      previewBody: "이 설정은 개인 업무 화면과 이후 서버 저장 설정에 연결됩니다.",
+    },
     status: {
       registered: "등록됨",
       assigned: "배정됨",
@@ -138,6 +188,31 @@ export const dictionaries: Record<Locale, Dictionary> = {
       columnOwner: "Owner",
       columnStatus: "Status",
       columnDue: "Due",
+    },
+    organizationPage: {
+      title: "Organization",
+      subtitle: "Review the flexible organization tree and user role assignments in one place.",
+      treeTitle: "Organization Tree",
+      usersTitle: "Users",
+      organizationColumn: "Organization",
+      codeColumn: "Code",
+      userColumn: "User",
+      roleColumn: "Role",
+    },
+    roles: {
+      systemAdmin: "System Admin",
+      organizationAdmin: "Organization Admin",
+      workManager: "Work Manager",
+      employee: "Employee",
+    },
+    settingsPage: {
+      title: "User Settings",
+      subtitle: "Language and theme changes apply immediately.",
+      preferencesTitle: "Display Preferences",
+      languageLabel: "Settings language",
+      themeLabel: "Settings theme",
+      previewTitle: "Current state",
+      previewBody: "These preferences will connect to the saved server profile.",
     },
     status: {
       registered: "Registered",

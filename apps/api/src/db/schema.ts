@@ -261,6 +261,19 @@ export const workItemHistory = pgTable("work_item_history", {
   createdAt,
 });
 
+export const auditEvents = pgTable("audit_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  actorUserId: uuid("actor_user_id")
+    .notNull()
+    .references(() => users.id),
+  action: text("action").notNull(),
+  targetType: text("target_type").notNull(),
+  targetId: text("target_id").notNull(),
+  before: jsonb("before").$type<unknown>().notNull().default(sql`'{}'::jsonb`),
+  after: jsonb("after").$type<unknown>().notNull().default(sql`'{}'::jsonb`),
+  createdAt,
+});
+
 export const contentTranslations = pgTable("content_translations", {
   id: uuid("id").primaryKey().defaultRandom(),
   entityType: text("entity_type").notNull(),

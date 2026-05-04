@@ -189,6 +189,16 @@ export const migrationStatements = [
     reason text,
     created_at timestamptz NOT NULL DEFAULT now()
   )`,
+  `CREATE TABLE IF NOT EXISTS audit_events (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    actor_user_id uuid NOT NULL REFERENCES users(id),
+    action text NOT NULL,
+    target_type text NOT NULL,
+    target_id text NOT NULL,
+    before jsonb NOT NULL DEFAULT '{}'::jsonb,
+    after jsonb NOT NULL DEFAULT '{}'::jsonb,
+    created_at timestamptz NOT NULL DEFAULT now()
+  )`,
   `CREATE TABLE IF NOT EXISTS content_translations (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     entity_type text NOT NULL,

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { glossaryTerms, organizations, projects, users, workItemHistory, workItems } from "./schema.js";
+import { auditEvents, glossaryTerms, organizations, projects, users, workItemHistory, workItems } from "./schema.js";
 
 describe("database schema", () => {
   it("defines core Work OS tables", () => {
@@ -7,6 +7,7 @@ describe("database schema", () => {
     expect(organizations).toBeDefined();
     expect(workItems).toBeDefined();
     expect(workItemHistory).toBeDefined();
+    expect(auditEvents).toBeDefined();
     expect(projects).toBeDefined();
     expect(glossaryTerms).toBeDefined();
   });

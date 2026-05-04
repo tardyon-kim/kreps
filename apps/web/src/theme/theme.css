@@ -189,7 +189,7 @@ a {
   top: 0;
   z-index: 2;
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto auto auto auto auto;
+  grid-template-columns: minmax(220px, 1fr) auto auto auto;
   gap: 10px;
   align-items: center;
   min-height: var(--topbar-height);
@@ -267,6 +267,13 @@ a {
   margin: 0 auto;
 }
 
+.directory-page {
+  display: grid;
+  gap: 22px;
+  max-width: 1220px;
+  margin: 0 auto;
+}
+
 .work-home-header {
   display: grid;
   gap: 8px;
@@ -332,6 +339,13 @@ a {
   gap: 16px;
 }
 
+.directory-grid,
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(320px, 0.9fr);
+  gap: 16px;
+}
+
 .content-panel {
   min-width: 0;
   padding: 18px;
@@ -373,6 +387,29 @@ a {
   line-height: 1.65;
 }
 
+.tree-cell {
+  display: inline-block;
+  font-weight: 760;
+}
+
+.settings-panel {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.form-field {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 760;
+}
+
+.form-field .select-control {
+  width: 100%;
+}
+
 .button {
   display: inline-grid;
   grid-template-columns: auto 1fr;
@@ -412,6 +449,13 @@ a {
   font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
+}
+
+.role-badge-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 160px;
 }
 
 .status-badge[data-tone="waiting"] {
@@ -457,7 +501,7 @@ a {
 
   .app-topbar {
     position: relative;
-    grid-template-columns: 1fr auto auto;
+    grid-template-columns: 1fr auto auto auto;
   }
 
   .app-topbar .button {
@@ -470,7 +514,9 @@ a {
   }
 
   .metric-grid,
-  .home-grid {
+  .home-grid,
+  .directory-grid,
+  .settings-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -524,18 +570,6 @@ a {
   .app-topbar .button {
     grid-column: 1;
     width: 100%;
-  }
-
-  .select-field {
-    min-width: 0;
-  }
-
-  .language-field {
-    grid-column: 1;
-  }
-
-  .theme-field {
-    grid-column: 2 / 4;
   }
 
   .app-topbar .icon-button {

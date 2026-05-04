@@ -1,5 +1,4 @@
 import { render, screen } from "@testing-library/react";
-import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi } from "vitest";
 import { AppShell } from "./AppShell.js";
 import { I18nProvider } from "../i18n/I18nProvider.js";
@@ -19,7 +18,7 @@ describe("AppShell", () => {
   it("renders Korean navigation labels", () => {
     renderShell("ko");
 
-    for (const label of ["내 업무", "업무 등록", "전사 업무", "프로젝트", "승인", "조직", "용어집", "설정"]) {
+    for (const label of ["\ub0b4 \uc5c5\ubb34", "\uc5c5\ubb34 \ub4f1\ub85d", "\uc804\uc0ac \uc5c5\ubb34", "\ud504\ub85c\uc81d\ud2b8", "\uc2b9\uc778", "\uc870\uc9c1", "\uc6a9\uc5b4\uc9d1", "\uc124\uc815"]) {
       expect(screen.getByRole("link", { name: label })).toBeInTheDocument();
     }
   });
@@ -41,15 +40,11 @@ describe("AppShell", () => {
     }
   });
 
-  it("changes navigation language immediately", async () => {
-    const user = userEvent.setup();
-    renderShell("ko");
+  it("keeps preference changes in the settings page instead of the top bar", () => {
+    renderShell("en");
 
-    await user.selectOptions(screen.getByLabelText("언어"), "en");
-
-    expect(screen.getByRole("link", { name: "My Work" })).toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "내 업무" })).not.toBeInTheDocument();
-    expect(document.documentElement.lang).toBe("en");
+    expect(screen.queryByLabelText("Language")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Theme")).not.toBeInTheDocument();
     expect(screen.getByRole("searchbox", { name: "Search work, projects, people" })).toHaveAttribute(
       "placeholder",
       "Search work, projects, people",
@@ -57,9 +52,6 @@ describe("AppShell", () => {
     expect(screen.getByRole("button", { name: "Quick Create" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Notifications" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "User menu" })).toBeInTheDocument();
-    expect(screen.getByLabelText("Language")).toHaveValue("en");
-    expect(screen.getByLabelText("Theme")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "System" })).toBeInTheDocument();
   });
 
   it("marks the active navigation route", () => {
@@ -79,11 +71,8 @@ describe("AppShell", () => {
     expect(screen.getByRole("link", { name: "My Work" })).toHaveAttribute("aria-current", "page");
   });
 
-  it("applies the selected theme to the document", async () => {
-    const user = userEvent.setup();
-    renderShell("en");
-
-    await user.selectOptions(screen.getByLabelText("Theme"), "dark");
+  it("applies the selected initial theme to the document", () => {
+    renderShell("en", "dark");
 
     expect(document.documentElement.dataset.theme).toBe("dark");
     expect(document.documentElement.dataset.themePreference).toBe("dark");

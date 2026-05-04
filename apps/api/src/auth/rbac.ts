@@ -28,6 +28,8 @@ export type PermissionGrant = {
   permission: Permission;
   roleId: Role;
   scope: Scope;
+  organizationId?: string | null;
+  projectId?: string | null;
 };
 
 export class PermissionDeniedError extends Error {
@@ -38,18 +40,29 @@ export class PermissionDeniedError extends Error {
 }
 
 export function requirePermission(permission: Permission, input: PermissionScopeInput): PermissionGrant {
+  const [grant] = listPermissionGrants(permission, input);
+  if (grant) return grant;
+
+  throw new PermissionDeniedError(permission);
+}
+
+export function listPermissionGrants(permission: Permission, input: PermissionScopeInput): PermissionGrant[] {
+  const grants: PermissionGrant[] = [];
+
   for (const role of input.roles) {
     if (!roleHasPermission(role.roleId, permission)) continue;
     if (!scopeAllows(role, input)) continue;
 
-    return {
+    grants.push({
       permission,
       roleId: role.roleId,
       scope: role.scope,
-    };
+      organizationId: role.organizationId,
+      projectId: role.projectId,
+    });
   }
 
-  throw new PermissionDeniedError(permission);
+  return grants;
 }
 
 function scopeAllows(role: RoleAssignment, input: PermissionScopeInput) {

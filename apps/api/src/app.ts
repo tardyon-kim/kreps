@@ -6,10 +6,16 @@ import type { AuthStore } from "./auth/session.js";
 import type { AppConfig } from "./config.js";
 import { registerAuthRoutes } from "./auth/routes.js";
 import { registerHealthRoutes } from "./routes/health.js";
+import { registerOrganizationRoutes } from "./modules/organizations/organization.routes.js";
+import type { OrganizationService } from "./modules/organizations/organization.service.js";
+import { registerUserRoutes } from "./modules/users/user.routes.js";
+import type { UserService } from "./modules/users/user.service.js";
 
 export type AppDependencies = {
   authStore?: AuthStore;
   authRoutes?: AuthRouteDependencies;
+  organizationService?: OrganizationService;
+  userService?: UserService;
 };
 
 export function buildApp(config: AppConfig, dependencies: AppDependencies = {}) {
@@ -32,6 +38,12 @@ export function buildApp(config: AppConfig, dependencies: AppDependencies = {}) 
 
   if (dependencies.authStore) {
     registerAuthRoutes(app, config, dependencies.authStore, dependencies.authRoutes);
+    if (dependencies.organizationService) {
+      registerOrganizationRoutes(app, config, dependencies.authStore, dependencies.organizationService);
+    }
+    if (dependencies.userService) {
+      registerUserRoutes(app, config, dependencies.authStore, dependencies.userService);
+    }
   }
 
   registerHealthRoutes(app, config);

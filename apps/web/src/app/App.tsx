@@ -2,6 +2,8 @@ import { I18nProvider, useI18n } from "../i18n/I18nProvider.js";
 import { ThemeProvider } from "../theme/ThemeProvider.js";
 import { AppShell } from "../components/AppShell.js";
 import { StatusBadge } from "../components/primitives/StatusBadge.js";
+import { OrganizationPage } from "../features/organization/OrganizationPage.js";
+import { UserSettingsPage } from "../features/settings/UserSettingsPage.js";
 import "../theme/theme.css";
 
 export function App() {
@@ -9,11 +11,24 @@ export function App() {
     <I18nProvider initialLocale="ko">
       <ThemeProvider initialTheme="system">
         <AppShell>
-          <MyWorkHome />
+          <CurrentPage />
         </AppShell>
       </ThemeProvider>
     </I18nProvider>
   );
+}
+
+function CurrentPage() {
+  const path = typeof window === "undefined" ? "/my-work" : window.location.pathname;
+
+  switch (path) {
+    case "/organization":
+      return <OrganizationPage />;
+    case "/settings":
+      return <UserSettingsPage />;
+    default:
+      return <MyWorkHome />;
+  }
 }
 
 function MyWorkHome() {
